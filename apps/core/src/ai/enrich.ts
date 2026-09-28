@@ -222,7 +222,7 @@ export async function enrichMedia(
             images: [{ type: 'image', image: { kind: 'path', path: thumbPath } }],
             jsonMode: true,
             temperature: 0.3,
-            maxTokens: 600,
+            maxTokens: 2_048,
           },
           { runId, label: 'enrich.vision' },
         );

@@ -42,6 +42,8 @@ export interface ChatUsage {
 
 export interface ChatResponse {
   text: string;
+  /** 推理型模型（如 DeepSeek vision-exp / reasoner）的思维链内容，正文为空时可用于诊断 */
+  reasoning?: string;
   toolCalls: ToolCall[];
   finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
   usage: ChatUsage;

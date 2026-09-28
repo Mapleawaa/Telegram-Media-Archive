@@ -26,6 +26,7 @@ interface ApiChatCompletion {
     finish_reason?: string;
     message?: {
       content?: string | null;
+      reasoning_content?: string | null;
       tool_calls?: { id: string; function: { name: string; arguments: string } }[];
     };
   }[];
@@ -161,8 +162,12 @@ export class OpenAICompatibleProvider implements AIProvider {
     );
     const choice = raw.choices?.[0];
     const finish = choice?.finish_reason;
+    const content = (choice?.message?.content ?? '').trim();
+    const reasoning = (choice?.message?.reasoning_content ?? '').trim();
     return {
-      text: choice?.message?.content ?? '',
+      // 推理型模型可能把答案留在 reasoning_content（正文被推理占满）
+      text: content || reasoning,
+      reasoning: reasoning || undefined,
       toolCalls: (choice?.message?.tool_calls ?? []).map((tc) => ({
         id: tc.id,
         name: tc.function.name,
