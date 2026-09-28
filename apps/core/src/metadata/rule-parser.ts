@@ -94,6 +94,39 @@ function lastYearIndexBefore(base: string, limit: number): { year: number; index
   return result;
 }
 
+export interface CaptionEntity {
+  type?: string;
+  offset?: number;
+  length?: number;
+}
+
+/**
+ * 从附言提取 hashtag 标签：优先用 Telegram 的 hashtag entity（offset 为 UTF-16 单元，
+ * 与 JS slice 一致），无 entity 时用正则兜底。
+ */
+export function extractHashtags(caption?: string, entities?: unknown): string[] {
+  const tags = new Set<string>();
+  if (caption && Array.isArray(entities)) {
+    for (const raw of entities) {
+      const ent = raw as CaptionEntity;
+      if (
+        ent.type === 'hashtag' &&
+        typeof ent.offset === 'number' &&
+        typeof ent.length === 'number'
+      ) {
+        const text = caption.slice(ent.offset, ent.offset + ent.length).replace(/^#/, '');
+        if (text) tags.add(text);
+      }
+    }
+  }
+  if (tags.size === 0 && caption) {
+    for (const m of caption.matchAll(/#([^\s#@]+)/gu)) {
+      if (m[1]) tags.add(m[1]);
+    }
+  }
+  return [...tags].filter((t) => t.length > 0 && t.length <= 64);
+}
+
 export function parseFilename(fileName: string): ParsedFilename {
   const base = fileName.replace(AV_EXT_RE, '');
   const parsed: ParsedFilename = {};

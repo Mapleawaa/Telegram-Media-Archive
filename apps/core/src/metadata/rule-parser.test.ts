@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { parseFilename } from './rule-parser.js';
+import { extractHashtags, parseFilename } from './rule-parser.js';
+
+describe('extractHashtags', () => {
+  it('优先使用 hashtag entity（UTF-16 offset）', () => {
+    const caption = '#Redgectx  #小吱 #异环';
+    const entities = [
+      { type: 'hashtag', offset: 0, length: 9 },
+      { type: 'hashtag', offset: 11, length: 3 },
+      { type: 'hashtag', offset: 15, length: 3 },
+    ];
+    expect(extractHashtags(caption, entities)).toEqual(['Redgectx', '小吱', '异环']);
+  });
+
+  it('无 entity 时用正则兜底并去重', () => {
+    expect(extractHashtags('好看 #收藏 #收藏 #动漫')).toEqual(['收藏', '动漫']);
+  });
+
+  it('空附言返回空数组', () => {
+    expect(extractHashtags(undefined, undefined)).toEqual([]);
+    expect(extractHashtags('没有标签的附言', [])).toEqual([]);
+  });
+});
 
 describe('parseFilename', () => {
   it('解析标准剧集命名', () => {

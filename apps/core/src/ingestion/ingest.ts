@@ -1,9 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import type { AppContext } from '../context.js';
-import { mediaAsset, mediaMetadata, telegramMessage } from '../database/schema.js';
+import { mediaAsset, mediaMetadata, mediaTag, telegramMessage } from '../database/schema.js';
 import { buildDedupeKey } from '../metadata/dedupe.js';
 import { rebuildSearchDoc } from '../metadata/rebuild-search-doc.js';
-import { parseFilename } from '../metadata/rule-parser.js';
+import { extractHashtags, parseFilename } from '../metadata/rule-parser.js';
 import type { IncomingMessage } from '../telegram/types.js';
 
 export const PARSER_VERSION = 'rule-v1';
@@ -136,6 +136,15 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
       })
       .returning({ id: telegramMessage.id })
       .get();
+
+    // 附言 hashtag → 确定性规则标签（source='rule'，可追溯到出处）
+    const hashtags = extractHashtags(caption, msg.captionEntities);
+    for (const tag of hashtags) {
+      db.insert(mediaTag)
+        .values({ mediaAssetId: asset.id, tag, source: 'rule' })
+        .onConflictDoNothing()
+        .run();
+    }
 
     if (isPrimary) {
       db.update(mediaAsset)

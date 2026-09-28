@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createTestContext } from '../database/test-utils.js';
-import { auditEvents, mediaAsset, mediaSearchDoc, telegramMessage } from '../database/schema.js';
+import {
+  auditEvents,
+  mediaAsset,
+  mediaSearchDoc,
+  mediaTag,
+  telegramMessage,
+} from '../database/schema.js';
 import type { IncomingMessage } from '../telegram/types.js';
 import { ingestMessage } from './ingest.js';
 
@@ -128,6 +134,32 @@ describe('ingestMessage', () => {
     expect(messages).toHaveLength(2);
     expect(messages.every((m) => m.mediaGroupId === 'grp-1')).toBe(true);
     expect(ctx.db.select().from(mediaAsset).all()).toHaveLength(2);
+  });
+
+  it('附言 hashtag 自动成为规则标签并进入搜索文档', () => {
+    const ctx = createTestContext();
+    ingestMessage(
+      ctx,
+      makeMsg({
+        caption: '#Redgectx #异环 好看',
+        captionEntities: [
+          { type: 'hashtag', offset: 0, length: 9 },
+          { type: 'hashtag', offset: 10, length: 3 },
+        ],
+      }),
+    );
+
+    const tags = ctx.db.select().from(mediaTag).all();
+    expect(tags.map((t) => t.tag).sort()).toEqual(['Redgectx', '异环']);
+    expect(tags.every((t) => t.source === 'rule')).toBe(true);
+
+    const doc = ctx.db.select().from(mediaSearchDoc).all();
+    expect(doc[0]!.tags).toContain('异环');
+    // trigram 查询词需 >=3 字符，这里用 8 字符的英文标签验证索引同步
+    const ftsHit = ctx.sqlite
+      .prepare(`SELECT rowid FROM fts_media WHERE fts_media MATCH ?`)
+      .all('"Redgectx"');
+    expect(ftsHit.length).toBeGreaterThan(0);
   });
 
   it('入库失败回滚：无半成品数据', () => {
