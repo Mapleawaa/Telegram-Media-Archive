@@ -10,7 +10,7 @@
 | M0 | ✅ | 脚手架：pnpm workspace + 双 app 空壳 + docs 纪律 + cargo 预热 | typecheck 过、health 200、Tauri 窗口打开、git 首提交 | 1-2 天 |
 | M1 | ✅ | Bot 归档 → SQLite → 桌面 Library/详情/搜索/forward（Phase 1+2 合并） | 8 条门禁全过（含真机归档/缩略图/转发，2026-09-28） | 5-8 天 |
 | M2 | ⏳ 下一步 | MTProto 通道：历史扫描/续扫/copy（无转发头）、Sources 页 | 同一套 contract test 双实现全过 | 3-5 天 |
-| M3 | — | AI 富化：LLM 标题/摘要/标签 + 缩略图 VLM、ai_runs/steps、Inbox | key/token 不外泄 grep 验证；AI 失败不影响归档 | 4-6 天 |
+| M3 | 🟡 | AI 富化：LLM 标题/摘要/标签 + 缩略图 VLM、ai_runs/steps、Inbox | 代码完成 + mock 全链路验证；真实模型待账户侧可用 Key | 4-6 天 |
 | M4 | — | Embedding + sqlite-vec + Hybrid 检索 + rerank | 无关键词语义查询命中；缓存不重复计费 | 3-4 天 |
 | M5 | — | Agent：工具白名单 + intent + 每步 trace | 「找那个 4K 赛博朋克片发给我」端到端成功 | 4-6 天 |
 | M6 | — | AI Activity 实时时间线 + Run Detail + React Flow 路径图 | WS 驱动逐步出现，无需刷新 | 3-4 天 |

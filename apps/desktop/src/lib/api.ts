@@ -1,7 +1,10 @@
 import type {
+  AiRunDetail,
+  AiRunItem,
   ForwardRequest,
   ForwardResponse,
   HealthResponse,
+  InboxResponse,
   JobItem,
   MediaDetail,
   MediaListQuery,
@@ -110,9 +113,17 @@ export const api = {
   patchSetting: (key: string, value: unknown) =>
     request<{ ok: true }>('/api/settings', { method: 'PATCH', body: JSON.stringify({ key, value }) }),
   reindexSearch: () =>
-    request<{ ok: true; count: number; tookMs: number }>('/api/admin/reindex-search', {
+    request<{ ok: true; count: number; tagsAdded: number; tookMs: number }>(
+      '/api/admin/reindex-search',
+      { method: 'POST' },
+    ),
+  enrich: (id: number) =>
+    request<{ ok: true; jobId: number | null; deduped: boolean }>(`/api/media/${id}/enrich`, {
       method: 'POST',
     }),
+  inbox: () => request<InboxResponse>('/api/inbox'),
+  aiRuns: (limit = 50) => request<{ items: AiRunItem[] }>(`/api/ai/runs?limit=${limit}`),
+  aiRunDetail: (id: number) => request<AiRunDetail>(`/api/ai/runs/${id}`),
   thumbnailUrl: (id: number) => `${getCoreUrl()}/api/media/${id}/thumbnail`,
   wsUrl: () => `${getCoreUrl().replace(/^http/, 'ws')}/ws`,
 };

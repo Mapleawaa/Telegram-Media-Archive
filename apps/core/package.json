@@ -10,7 +10,9 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "seed:demo": "tsx scripts/seed-demo.mts"
+    "seed:demo": "tsx scripts/seed-demo.mts",
+    "ai:probe": "tsx scripts/ai-probe.mts",
+    "ai:check": "tsx scripts/ai-check.mts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

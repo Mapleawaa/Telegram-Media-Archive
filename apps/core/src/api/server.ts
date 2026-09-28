@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { ZodError } from 'zod';
 import type { AppContext } from '../context.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerAiRoutes } from './routes/ai.js';
 import { registerJobsRoutes } from './routes/jobs.js';
 import { registerMediaRoutes, type ServerDeps } from './routes/media.js';
 import { registerSearchRoutes } from './routes/search.js';
@@ -52,6 +53,7 @@ export async function createServer(ctx: AppContext, deps: ServerDeps) {
   registerStatsRoutes(app, ctx);
   registerSettingsRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
+  registerAiRoutes(app, ctx);
 
   return app;
 }

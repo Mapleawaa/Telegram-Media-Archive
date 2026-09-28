@@ -4,6 +4,7 @@
  */
 import path from 'node:path';
 import { pino } from 'pino';
+import { AiGateway } from '../src/ai/gateway.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { openDatabase } from '../src/database/client.js';
@@ -32,6 +33,7 @@ const ctx: AppContext = {
   sqlite: dbHandle.sqlite,
   bus,
   queue,
+  ai: new AiGateway(dbHandle.db, logger, config),
 };
 
 const CHAT_ID = -1002464626889;

@@ -1,4 +1,6 @@
 import { createServer } from './api/server.js';
+import { AiGateway } from './ai/gateway.js';
+import { enrichMedia } from './ai/enrich.js';
 import { loadConfig, redactConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './database/client.js';
@@ -8,6 +10,7 @@ import { JobQueue } from './jobs/queue.js';
 import { Worker } from './jobs/worker.js';
 import { createLogger, registerSecret } from './logger.js';
 import { BotClient } from './telegram/bot/bot-client.js';
+import { ensureThumbnail } from './telegram/bot/thumbnail.js';
 
 const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL, process.env.NODE_ENV !== 'production');
@@ -19,6 +22,8 @@ const bus = new EventBus(dbHandle.db, logger);
 const queue = new JobQueue(dbHandle.sqlite, logger);
 queue.resetStale();
 
+const ai = new AiGateway(dbHandle.db, logger, config);
+
 const ctx: AppContext = {
   config,
   logger,
@@ -26,10 +31,8 @@ const ctx: AppContext = {
   sqlite: dbHandle.sqlite,
   bus,
   queue,
+  ai,
 };
-
-const worker = new Worker(queue, bus, logger);
-worker.start();
 
 const tg = new BotClient({
   config,
@@ -49,6 +52,17 @@ const tg = new BotClient({
     }
   },
 });
+
+const worker = new Worker(queue, bus, logger);
+worker.register('ai.enrich', async (payload) => {
+  const mediaId =
+    payload && typeof payload === 'object' && 'mediaId' in payload
+      ? Number((payload as { mediaId: unknown }).mediaId)
+      : NaN;
+  if (!Number.isInteger(mediaId)) throw new Error('ai.enrich 缺少有效 mediaId');
+  await enrichMedia(ctx, ai, tg, mediaId, ensureThumbnail);
+});
+worker.start();
 
 const app = await createServer(ctx, { tg });
 

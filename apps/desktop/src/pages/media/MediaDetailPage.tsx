@@ -5,6 +5,7 @@ import {
   ExternalLink,
   RefreshCw,
   Send,
+  Sparkles,
   Star,
   X,
 } from 'lucide-react';
@@ -105,6 +106,15 @@ export function MediaDetailPage() {
     },
   });
 
+  const enrich = useMutation({
+    mutationFn: () => api.enrich(id),
+    onSuccess: (res) => {
+      toast.success(res.deduped ? '已在分析队列中' : '已加入 AI 分析队列');
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
+  });
+
   if (detail.isPending) {
     return (
       <div className="space-y-4 p-6">
@@ -148,6 +158,14 @@ export function MediaDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => enrich.mutate()}
+            disabled={enrich.isPending}
+          >
+            <Sparkles className="size-4" /> AI 分析
+          </Button>
           <Button size="sm" onClick={() => setForwardOpen(true)}>
             <Send className="size-4" /> 转发到…
           </Button>
@@ -192,6 +210,22 @@ export function MediaDetailPage() {
               {primary && <CopyField label="chat / message" value={`${primary.chatId} / ${primary.messageId}`} />}
             </CardContent>
           </Card>
+
+          {d.metadata?.summary && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Sparkles className="size-4" /> AI 摘要
+                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                    {d.metadata.extractedBy ?? '—'}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="whitespace-pre-wrap pt-0 text-xs leading-relaxed">
+                {d.metadata.summary}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-4">

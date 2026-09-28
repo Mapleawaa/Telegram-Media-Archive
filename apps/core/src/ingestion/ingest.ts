@@ -158,6 +158,22 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
         .run();
     }
 
+    // AI 富化：启用时入队（同 asset 去重），未启用时直接标记 skipped
+    if (assetCreated) {
+      if (ctx.ai.enrichEnabled) {
+        ctx.queue.enqueue(
+          'ai.enrich',
+          { mediaId: asset.id },
+          { dedupeKey: `ai.enrich:${asset.id}`, priority: 1 },
+        );
+      } else {
+        db.update(mediaAsset)
+          .set({ aiStatus: 'skipped', updatedAt: new Date() })
+          .where(eq(mediaAsset.id, asset.id))
+          .run();
+      }
+    }
+
     rebuildSearchDoc(ctx, asset.id);
 
     bus.emit(

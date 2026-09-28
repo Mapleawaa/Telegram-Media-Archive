@@ -30,6 +30,8 @@ export function useEventStream(): void {
       void queryClient.invalidateQueries({ queryKey: ['stats'] });
       void queryClient.invalidateQueries({ queryKey: ['media'] });
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      void queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      void queryClient.invalidateQueries({ queryKey: ['ai-runs'] });
       if (broad) void queryClient.invalidateQueries({ queryKey: ['media'] });
       for (const id of ids) {
         void queryClient.invalidateQueries({ queryKey: ['media', id] });

@@ -167,6 +167,50 @@ export interface StatsResponse {
   recentFailures: JobItem[];
 }
 
+export interface AiRunItem {
+  id: number;
+  kind: string;
+  status: string;
+  provider: string | null;
+  model: string | null;
+  userRequest: string | null;
+  totalTokens: number | null;
+  startedAt: number;
+  finishedAt: number | null;
+  error: string | null;
+}
+
+export interface AiStepItem {
+  id: number;
+  runId: number;
+  stepIndex: number;
+  type: string;
+  toolName: string | null;
+  input: unknown;
+  output: unknown;
+  status: string;
+  latencyMs: number | null;
+  tokenUsage: unknown;
+  error: string | null;
+  createdAt: number;
+}
+
+export interface AiRunDetail extends AiRunItem {
+  steps: AiStepItem[];
+}
+
+export interface InboxResponse {
+  pending: MediaListItem[];
+  partial: MediaListItem[];
+  failed: MediaListItem[];
+  done: MediaListItem[];
+}
+
+export const EnrichRequestSchema = z.object({
+  force: z.boolean().optional(),
+});
+export type EnrichRequest = z.infer<typeof EnrichRequestSchema>;
+
 export const SettingsPatchSchema = z.object({
   key: z.string().trim().min(1).max(128),
   value: z.unknown(),

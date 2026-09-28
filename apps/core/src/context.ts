@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { Logger } from 'pino';
+import type { AiGateway } from './ai/gateway.js';
 import type { AppConfig } from './config.js';
 import type { Db } from './database/client.js';
 import type { EventBus } from './events/bus.js';
@@ -12,4 +13,5 @@ export interface AppContext {
   sqlite: Database;
   bus: EventBus;
   queue: JobQueue;
+  ai: AiGateway;
 }
