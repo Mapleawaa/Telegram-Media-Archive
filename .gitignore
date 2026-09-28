@@ -16,8 +16,8 @@ coverage/
 .session/
 
 # local data
-apps/core/.data/
-.data/
+apps/core/.data*/
+.data*/
 *.db
 *.db-wal
 *.db-shm

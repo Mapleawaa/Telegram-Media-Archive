@@ -10,6 +10,7 @@ try {
 const EnvSchema = z.object({
   TG_BOT_TOKEN: z.string().min(10, 'TG_BOT_TOKEN 看起来不是有效的 Bot Token'),
   TG_ARCHIVE_CHAT_ID: z.coerce.number().int(),
+  TELEGRAM_PROXY_URL: z.string().url().optional(),
   CORE_HOST: z.string().default('127.0.0.1'),
   CORE_PORT: z.coerce.number().int().positive().default(8787),
   TMA_DATA_DIR: z.string().optional(),

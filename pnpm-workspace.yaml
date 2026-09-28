@@ -3,4 +3,5 @@ packages:
   - packages/*
 allowBuilds:
   esbuild: true
-  better-sqlite3: true
+  # v13 运行时直接加载包内 prebuilds/win32-x64.node，node-gyp 编译既不需要也没 Python 可用
+  better-sqlite3: false
