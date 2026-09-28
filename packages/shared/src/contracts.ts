@@ -124,7 +124,7 @@ export const SearchRequestSchema = z.object({
 export type SearchRequest = z.infer<typeof SearchRequestSchema>;
 
 export interface SearchDebug {
-  strategy: 'fts' | 'like' | 'none';
+  strategy: 'fts' | 'like' | 'hybrid' | 'none';
   ftsHits: number;
   vectorHits: number;
   reranked: number;
@@ -210,6 +210,24 @@ export const EnrichRequestSchema = z.object({
   force: z.boolean().optional(),
 });
 export type EnrichRequest = z.infer<typeof EnrichRequestSchema>;
+
+export interface CapabilityStatus {
+  enabled: boolean;
+  model: string | null;
+  baseUrl: string | null;
+}
+
+export interface AiCapabilitiesResponse {
+  providerKind: 'none' | 'mock' | 'openai';
+  chat: CapabilityStatus;
+  vision: CapabilityStatus;
+  embed: CapabilityStatus;
+  vector: {
+    available: boolean;
+    dim: number | null;
+    embeddedCount: number;
+  };
+}
 
 export const SettingsPatchSchema = z.object({
   key: z.string().trim().min(1).max(128),

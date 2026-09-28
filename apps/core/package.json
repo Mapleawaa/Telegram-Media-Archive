@@ -25,6 +25,7 @@
     "grammy": "^1.46.0",
     "https-proxy-agent": "^9.1.0",
     "pino": "^10.3.1",
+    "sqlite-vec": "^0.1.9",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -11,15 +11,16 @@
 | M1 | ✅ | Bot 归档 → SQLite → 桌面 Library/详情/搜索/forward（Phase 1+2 合并） | 8 条门禁全过（含真机归档/缩略图/转发，2026-09-28） | 5-8 天 |
 | M2 | ⏳ 下一步 | MTProto 通道：历史扫描/续扫/copy（无转发头）、Sources 页 | 同一套 contract test 双实现全过 | 3-5 天 |
 | M3 | ✅ | AI 富化：LLM 标题/摘要/标签 + 缩略图 VLM、ai_runs/steps、Inbox | 真实模型（DeepSeek）4 条媒体全部 done + mock 全链路 + 32 单测（2026-09-29） | 4-6 天 |
-| M4 | — | Embedding + sqlite-vec + Hybrid 检索 + rerank | 无关键词语义查询命中；缓存不重复计费 | 3-4 天 |
-| M5 | — | Agent：工具白名单 + intent + 每步 trace | 「找那个 4K 赛博朋克片发给我」端到端成功 | 4-6 天 |
+| M4 | ✅ | Embedding + sqlite-vec + Hybrid 检索 + rerank | sqlite-vec/缓存/融合/降级 全部单测覆盖，mock 全链路 hybrid 检索 3ms（2026-09-29）；真实 embedding 待接入 | 3-4 天 |
+| M5 | ⏳ | Agent：工具白名单 + intent + 每步 trace | 「找那个 4K 赛博朋克片发给我」端到端成功 | 4-6 天 |
 | M6 | — | AI Activity 实时时间线 + Run Detail + React Flow 路径图 | WS 驱动逐步出现，无需刷新 | 3-4 天 |
 | M7 | — | 打包：Node SEA sidecar 进 Tauri；Remote Core 路线文档 | 干净 Windows 无 node/pnpm 可装可用 | 4-6 天 |
 
 ## 关键决策速查
 
 - **TG 接入**：Bot API + MTProto 双通道，`TelegramClient` 抽象两实现（M2 起 mtcute，gramjs 备选）
-- **AI**：OpenAI-compatible 适配器（per-capability 模型）；当前用 **DeepSeek**（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉，国内直连）；硅基流动代金券模型覆盖已过期（备查）；Embedding 待 M4 另配（DeepSeek 无 embedding）
+- **AI**：OpenAI-compatible 适配器，**三能力各自独立配置**（`AI_CHAT_*` / `AI_VLM_*` / `AI_EMBED_*`，缺省回退 `AI_BASE_URL`/`AI_API_KEY`）；当前文本 `deepseek-flash`、视觉 `deepseek-v4-flash-vision-exp`（DeepSeek 无 embedding → 语义检索待接 Ollama bge-m3 或硅基流动/智谱）
+- **检索**：structured + FTS5(trigram) + sqlite-vec 向量 → RRF 融合（Hybrid）；无 embed 配置时自动降级 FTS/LIKE
 - **技术栈**：Fastify 5 · better-sqlite3 13 + Drizzle · grammY · Tauri 2 · React 19 + Vite 8 + Tailwind 4 + shadcn + TanStack Query 5 + Zustand 5 + HashRouter · pino · vitest · TypeScript 5.9.3（钉死，勿升 TS7）
 - **FTS 中文**：FTS5 trigram tokenizer（无需外部 DLL），`media_search_doc` 中间表 + 触发器同步
 - **去重**：`file_unique_id` 一级 + `dedupe_key`（规范化文件名|size|duration）二级

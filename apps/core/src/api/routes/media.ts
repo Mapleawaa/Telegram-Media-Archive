@@ -16,7 +16,7 @@ import type { AppContext } from '../../context.js';
 import { mediaAnnotation, mediaTag } from '../../database/schema.js';
 import { getMediaDetail, queryMedia } from '../../media/queries.js';
 import { rebuildSearchDoc } from '../../metadata/rebuild-search-doc.js';
-import { searchFts } from '../../search/fts.js';
+import { hybridSearch } from '../../search/orchestrator.js';
 import { getSetting } from '../../settings/store.js';
 import { ensureThumbnail } from '../../telegram/bot/thumbnail.js';
 import type { TelegramClient } from '../../telegram/client.js';
@@ -47,25 +47,28 @@ export function registerMediaRoutes(
 ): void {
   app.get('/api/media', async (req): Promise<Page<MediaListItem>> => {
     const query = MediaListQuerySchema.parse(cleanQuery(req.query));
-    let candidateIds: number[] | undefined;
-    let order: 'recent' | 'relevance' = 'recent';
+    const filters = {
+      type: query.type,
+      quality: query.quality,
+      year: query.year,
+      tag: query.tag,
+      aiStatus: query.aiStatus,
+    };
+
     if (query.q) {
-      const fts = searchFts(ctx.sqlite, query.q, 200);
-      candidateIds = fts.hits.map((h) => h.docId);
-      order = 'relevance';
+      const hybrid = await hybridSearch(ctx, ctx.ai, {
+        query: query.q,
+        filters,
+        limit: query.limit,
+      });
+      return { items: hybrid.items, nextCursor: null };
     }
+
     return queryMedia(ctx.sqlite, {
-      filters: {
-        type: query.type,
-        quality: query.quality,
-        year: query.year,
-        tag: query.tag,
-        aiStatus: query.aiStatus,
-      },
+      filters,
       limit: query.limit,
       cursor: query.cursor,
-      candidateIds,
-      order,
+      order: 'recent',
     });
   });
 

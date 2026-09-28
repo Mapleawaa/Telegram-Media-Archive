@@ -1,4 +1,5 @@
 import type {
+  AiCapabilitiesResponse,
   AiRunDetail,
   AiRunItem,
   ForwardRequest,
@@ -119,6 +120,11 @@ export const api = {
     ),
   enrich: (id: number) =>
     request<{ ok: true; jobId: number | null; deduped: boolean }>(`/api/media/${id}/enrich`, {
+      method: 'POST',
+    }),
+  aiCapabilities: () => request<AiCapabilitiesResponse>('/api/ai/capabilities'),
+  reindexEmbeddings: () =>
+    request<{ ok: true; total: number; enqueued: number }>('/api/admin/reindex-embeddings', {
       method: 'POST',
     }),
   inbox: () => request<InboxResponse>('/api/inbox'),

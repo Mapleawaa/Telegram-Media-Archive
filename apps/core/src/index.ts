@@ -1,6 +1,7 @@
 import { createServer } from './api/server.js';
 import { AiGateway } from './ai/gateway.js';
 import { enrichMedia } from './ai/enrich.js';
+import { embedAsset } from './ai/embedding.js';
 import { loadConfig, redactConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './database/client.js';
@@ -16,6 +17,20 @@ const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL, process.env.NODE_ENV !== 'production');
 registerSecret(config.TG_BOT_TOKEN);
 registerSecret(config.AI_API_KEY);
+registerSecret(config.AI_CHAT_API_KEY);
+registerSecret(config.AI_VLM_API_KEY);
+registerSecret(config.AI_EMBED_API_KEY);
+
+function readMediaId(payload: unknown, jobType: string): number {
+  const mediaId =
+    payload && typeof payload === 'object' && 'mediaId' in payload
+      ? Number((payload as { mediaId: unknown }).mediaId)
+      : NaN;
+  if (!Number.isInteger(mediaId) || mediaId <= 0) {
+    throw new Error(`${jobType} 缺少有效 mediaId`);
+  }
+  return mediaId;
+}
 
 const dbHandle = openDatabase(config, logger);
 const bus = new EventBus(dbHandle.db, logger);
@@ -55,12 +70,12 @@ const tg = new BotClient({
 
 const worker = new Worker(queue, bus, logger);
 worker.register('ai.enrich', async (payload) => {
-  const mediaId =
-    payload && typeof payload === 'object' && 'mediaId' in payload
-      ? Number((payload as { mediaId: unknown }).mediaId)
-      : NaN;
-  if (!Number.isInteger(mediaId)) throw new Error('ai.enrich 缺少有效 mediaId');
+  const mediaId = readMediaId(payload, 'ai.enrich');
   await enrichMedia(ctx, ai, tg, mediaId, ensureThumbnail);
+});
+worker.register('embedding.create', async (payload) => {
+  const mediaId = readMediaId(payload, 'embedding.create');
+  await embedAsset(ctx, ai, mediaId);
 });
 worker.start();
 

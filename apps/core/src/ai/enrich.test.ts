@@ -133,7 +133,8 @@ describe('enrichMedia', () => {
       vision: () => Promise.reject(new Error('模拟上游故障')),
       embed: () => Promise.reject(new Error('模拟上游故障')),
     };
-    Object.assign(ctx.ai, { provider: failing });
+    Object.assign(ctx.ai.runtimes.chat, { provider: failing, enabled: true });
+    Object.assign(ctx.ai.runtimes.vision, { provider: failing, enabled: true });
 
     await expect(
       enrichMedia(ctx, ctx.ai, makeClient(), ingested.assetId, ensureThumbnail),

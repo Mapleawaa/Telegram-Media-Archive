@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 
 const STRATEGY_LABELS: Record<string, string> = {
+  hybrid: 'Hybrid · FTS + 向量（RRF 融合）',
   fts: 'FTS5 · trigram',
   like: 'LIKE 子串（短查询）',
   none: '未执行',
@@ -54,7 +55,8 @@ export function SearchPage() {
       {result && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{STRATEGY_LABELS[result.debug.strategy] ?? result.debug.strategy}</Badge>
-          <span>候选 {result.debug.ftsHits} 条</span>
+          <span>FTS {result.debug.ftsHits} 条</span>
+          <span>向量 {result.debug.vectorHits} 条</span>
           <span>返回 {result.items.length} 条</span>
           <span>耗时 {result.debug.tookMs} ms</span>
         </div>

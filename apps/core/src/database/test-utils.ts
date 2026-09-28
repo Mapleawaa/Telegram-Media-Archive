@@ -8,11 +8,13 @@ import type { AppConfig } from '../config.js';
 import type { AppContext } from '../context.js';
 import { EventBus } from '../events/bus.js';
 import { JobQueue } from '../jobs/queue.js';
+import { loadVecExtension } from '../vector/store.js';
 import * as schema from './schema.js';
 
 export function createTestDb() {
   const sqlite = new Database(':memory:');
   sqlite.pragma('foreign_keys = ON');
+  loadVecExtension(sqlite, pino({ level: 'silent' }));
   const db = drizzle(sqlite, { schema });
   migrate(db, { migrationsFolder: path.join(import.meta.dirname, '..', '..', 'drizzle') });
   return { db, sqlite };

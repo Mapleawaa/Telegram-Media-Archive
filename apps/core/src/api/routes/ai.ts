@@ -1,8 +1,16 @@
-import type { AiRunDetail, AiRunItem, AiStepItem, InboxResponse, MediaListItem } from '@tma/shared';
+import type {
+  AiCapabilitiesResponse,
+  AiRunDetail,
+  AiRunItem,
+  AiStepItem,
+  InboxResponse,
+  MediaListItem,
+} from '@tma/shared';
 import { eq } from 'drizzle-orm';
 import type { AppContext } from '../../context.js';
 import { mediaAsset } from '../../database/schema.js';
 import { queryMedia } from '../../media/queries.js';
+import { getVecDim, vectorCount } from '../../vector/store.js';
 import type { AppServer } from '../types.js';
 
 interface RawRun {
@@ -61,6 +69,24 @@ const RUN_SELECT = `SELECT id, kind, status, provider, model, user_request AS us
                     FROM ai_runs`;
 
 export function registerAiRoutes(app: AppServer, ctx: AppContext): void {
+  app.get('/api/ai/capabilities', async (): Promise<AiCapabilitiesResponse> => {
+    const described = ctx.ai.describe();
+    let embeddedCount = 0;
+    let dim: number | null = null;
+    let vectorAvailable = false;
+    try {
+      dim = getVecDim(ctx.sqlite);
+      vectorAvailable = dim !== null;
+      if (vectorAvailable) embeddedCount = vectorCount(ctx.sqlite);
+    } catch {
+      vectorAvailable = false;
+    }
+    return {
+      ...described,
+      vector: { available: vectorAvailable, dim, embeddedCount },
+    };
+  });
+
   app.post('/api/media/:id/enrich', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'invalid_id' });

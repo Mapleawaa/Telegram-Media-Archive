@@ -138,7 +138,7 @@ export async function enrichMedia(
     .where(eq(mediaAnnotation.mediaAssetId, assetId))
     .all();
 
-  const caps = gateway.capabilities();
+  const caps = { chat: gateway.chatEnabled, vision: gateway.visionEnabled };
   const errors: string[] = [];
   let textEnrichment: TextEnrichment | null = null;
   let visionEnrichment: VisionEnrichment | null = null;
@@ -261,6 +261,16 @@ export async function enrichMedia(
   }
 
   applyEnrichment(ctx, assetId, { textEnrichment, visionEnrichment, status: outcomeStatus });
+
+  // 富化完成后接力向量化（若配置了 embedding 能力）
+  if (ctx.ai.embedEnabled) {
+    ctx.queue.enqueue(
+      'embedding.create',
+      { mediaId: assetId },
+      { dedupeKey: `embedding.create:${assetId}`, priority: 1 },
+    );
+  }
+
   return { status: outcomeStatus, textEnrichment, visionEnrichment, errors };
 }
 

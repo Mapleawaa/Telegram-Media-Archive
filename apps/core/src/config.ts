@@ -21,6 +21,17 @@ const EnvSchema = z.object({
   AI_CHAT_MODEL: z.string().optional(),
   AI_VLM_MODEL: z.string().optional(),
   AI_EMBED_MODEL: z.string().optional(),
+  // per-capability 覆盖（像编程工具给不同角色配不同模型）；缺省回退到 AI_BASE_URL / AI_API_KEY
+  AI_CHAT_BASE_URL: z.string().url().optional(),
+  AI_CHAT_API_KEY: z.string().optional(),
+  AI_VLM_BASE_URL: z.string().url().optional(),
+  AI_VLM_API_KEY: z.string().optional(),
+  AI_EMBED_BASE_URL: z.string().url().optional(),
+  AI_EMBED_API_KEY: z.string().optional(),
+  VEC_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & { dataDir: string };

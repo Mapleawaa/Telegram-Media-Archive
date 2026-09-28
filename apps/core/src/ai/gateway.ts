@@ -17,6 +17,7 @@ import type {
 export type AiProviderKind = 'none' | 'mock' | 'openai';
 export type RunKind = (typeof RUN_KINDS)[number];
 export type StepType = (typeof STEP_TYPES)[number];
+export type CapabilityName = 'chat' | 'vision' | 'embed';
 
 export interface StepInput {
   type: StepType;
@@ -29,27 +30,66 @@ export interface StepInput {
   error?: string;
 }
 
-export interface CapabilityState {
-  chat: boolean;
-  vision: boolean;
-  embed: boolean;
+export interface CapabilityRuntime {
+  name: CapabilityName;
+  model?: string;
+  baseUrl?: string;
+  provider: AIProvider | null;
+  enabled: boolean;
+}
+
+export interface CapabilityDescription {
+  enabled: boolean;
+  model: string | null;
+  baseUrl: string | null;
+}
+
+export interface CapabilitiesDescription {
+  providerKind: AiProviderKind;
+  chat: CapabilityDescription;
+  vision: CapabilityDescription;
+  embed: CapabilityDescription;
+}
+
+interface CapabilityConfig {
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+function capabilityConfigs(config: AppConfig): Record<CapabilityName, CapabilityConfig> {
+  return {
+    chat: {
+      model: config.AI_CHAT_MODEL,
+      baseUrl: config.AI_CHAT_BASE_URL ?? config.AI_BASE_URL,
+      apiKey: config.AI_CHAT_API_KEY ?? config.AI_API_KEY,
+    },
+    vision: {
+      model: config.AI_VLM_MODEL,
+      baseUrl: config.AI_VLM_BASE_URL ?? config.AI_BASE_URL,
+      apiKey: config.AI_VLM_API_KEY ?? config.AI_API_KEY,
+    },
+    embed: {
+      model: config.AI_EMBED_MODEL,
+      baseUrl: config.AI_EMBED_BASE_URL ?? config.AI_BASE_URL,
+      apiKey: config.AI_EMBED_API_KEY ?? config.AI_API_KEY,
+    },
+  };
+}
+
+function hasCompleteConfig(cfg: CapabilityConfig): boolean {
+  return Boolean(cfg.model && cfg.baseUrl && cfg.apiKey);
 }
 
 function resolveProviderKind(config: AppConfig): AiProviderKind {
-  if (config.AI_PROVIDER === 'mock' || config.AI_PROVIDER === 'none' || config.AI_PROVIDER === 'openai') {
-    return config.AI_PROVIDER;
-  }
-  // auto：具备 baseUrl + key + chatModel 时用真实 provider，否则视为未启用
-  if (config.AI_BASE_URL && config.AI_API_KEY && config.AI_CHAT_MODEL) return 'openai';
-  return 'none';
+  if (config.AI_PROVIDER !== 'auto') return config.AI_PROVIDER;
+  const configs = capabilityConfigs(config);
+  return Object.values(configs).some(hasCompleteConfig) ? 'openai' : 'none';
 }
 
 export class AiGateway {
   readonly providerKind: AiProviderKind;
-  readonly provider: AIProvider | null;
-  readonly chatModel?: string;
-  readonly visionModel?: string;
-  readonly embedModel?: string;
+  readonly runtimes: Record<CapabilityName, CapabilityRuntime>;
   private readonly stepCounters = new Map<number, number>();
   private readonly runTokens = new Map<number, number>();
 
@@ -59,48 +99,94 @@ export class AiGateway {
     config: AppConfig,
   ) {
     this.providerKind = resolveProviderKind(config);
-    this.chatModel = config.AI_CHAT_MODEL;
-    this.visionModel = config.AI_VLM_MODEL;
-    this.embedModel = config.AI_EMBED_MODEL;
+    const configs = capabilityConfigs(config);
+    const mock = this.providerKind === 'mock' ? new MockProvider() : null;
 
-    if (this.providerKind === 'openai') {
-      this.provider = new OpenAICompatibleProvider({
-        id: 'openai',
-        baseUrl: config.AI_BASE_URL!,
-        apiKey: config.AI_API_KEY!,
-      });
-    } else if (this.providerKind === 'mock') {
-      this.provider = new MockProvider();
-    } else {
-      this.provider = null;
-    }
+    const build = (name: CapabilityName): CapabilityRuntime => {
+      const cfg = configs[name];
+      if (this.providerKind === 'none') {
+        return { name, model: cfg.model, baseUrl: cfg.baseUrl, provider: null, enabled: false };
+      }
+      if (mock) {
+        // mock 也遵循「配置了哪个模型才启用哪个能力」的规则
+        return {
+          name,
+          model: cfg.model,
+          baseUrl: cfg.baseUrl ?? 'mock',
+          provider: mock,
+          enabled: Boolean(cfg.model),
+        };
+      }
+      if (!hasCompleteConfig(cfg)) {
+        return { name, model: cfg.model, baseUrl: cfg.baseUrl, provider: null, enabled: false };
+      }
+      return {
+        name,
+        model: cfg.model,
+        baseUrl: cfg.baseUrl,
+        provider: new OpenAICompatibleProvider({
+          id: `${name}:openai`,
+          baseUrl: cfg.baseUrl!,
+          apiKey: cfg.apiKey!,
+        }),
+        enabled: true,
+      };
+    };
+
+    this.runtimes = { chat: build('chat'), vision: build('vision'), embed: build('embed') };
 
     logger.info(
       {
         provider: this.providerKind,
-        chatModel: this.chatModel ?? null,
-        visionModel: this.visionModel ?? null,
-        embedModel: this.embedModel ?? null,
+        chat: this.describeCapability('chat'),
+        vision: this.describeCapability('vision'),
+        embed: this.describeCapability('embed'),
       },
-      'AI 网关初始化',
+      'AI 网关初始化（各能力独立配置）',
     );
   }
 
-  capabilities(): CapabilityState {
-    return {
-      chat: this.provider !== null && Boolean(this.chatModel),
-      vision: this.provider !== null && Boolean(this.visionModel),
-      embed: this.provider !== null && Boolean(this.embedModel),
+  private describeCapability(name: CapabilityName): string {
+    const rt = this.runtimes[name];
+    return rt.enabled ? `${rt.model} @ ${rt.baseUrl}` : '未启用';
+  }
+
+  describe(): CapabilitiesDescription {
+    const pick = (name: CapabilityName): CapabilityDescription => {
+      const rt = this.runtimes[name];
+      return {
+        enabled: rt.enabled,
+        model: rt.model ?? null,
+        baseUrl: rt.baseUrl ?? null,
+      };
     };
+    return {
+      providerKind: this.providerKind,
+      chat: pick('chat'),
+      vision: pick('vision'),
+      embed: pick('embed'),
+    };
+  }
+
+  get chatEnabled(): boolean {
+    return this.runtimes.chat.enabled;
+  }
+
+  get visionEnabled(): boolean {
+    return this.runtimes.vision.enabled;
+  }
+
+  get embedEnabled(): boolean {
+    return this.runtimes.embed.enabled;
   }
 
   /** 是否有任何富化能力（决定归档时是否入队 ai.enrich） */
   get enrichEnabled(): boolean {
-    const caps = this.capabilities();
-    return caps.chat || caps.vision;
+    return this.chatEnabled || this.visionEnabled;
   }
 
   startRun(kind: RunKind, userRequest?: string): number {
+    const model = this.runtimes.chat.model ?? this.runtimes.vision.model ?? null;
     const row = this.db
       .insert(aiRuns)
       .values({
@@ -108,7 +194,7 @@ export class AiGateway {
         userRequest: userRequest ?? null,
         status: 'running',
         provider: this.providerKind,
-        model: this.chatModel ?? null,
+        model,
       })
       .returning({ id: aiRuns.id })
       .get();
@@ -179,20 +265,29 @@ export class AiGateway {
     }
   }
 
+  private requireRuntime(name: CapabilityName): CapabilityRuntime {
+    const rt = this.runtimes[name];
+    if (!rt.provider || !rt.enabled || !rt.model) {
+      throw new Error(
+        `${name} 能力未启用：请配置 AI_${name.toUpperCase()}_MODEL（可选 AI_${name.toUpperCase()}_BASE_URL / AI_${name.toUpperCase()}_API_KEY 单独指定服务商）`,
+      );
+    }
+    return rt;
+  }
+
   async runChat(
     req: ChatRequest,
     opts: { runId?: number; label?: string } = {},
   ): Promise<ChatResponse> {
-    if (!this.provider) throw new Error('AI provider 未启用');
-    const model = req.model ?? this.chatModel;
-    if (!model) throw new Error('未配置 AI_CHAT_MODEL');
-    const response = await this.provider.chat({ ...req, model });
+    const rt = this.requireRuntime('chat');
+    const model = req.model ?? rt.model;
+    const response = await rt.provider!.chat({ ...req, model });
     if (opts.runId !== undefined) {
       this.addTokens(opts.runId, response.usage.totalTokens);
       this.recordStep(opts.runId, {
         type: 'model_call',
         toolName: opts.label ?? 'chat',
-        input: { model, messages: req.messages.length, jsonMode: req.jsonMode ?? false },
+        input: { model, baseUrl: rt.baseUrl, messages: req.messages.length, jsonMode: req.jsonMode ?? false },
         output: {
           text: response.text.slice(0, 2_000),
           reasoning: response.reasoning ? response.reasoning.slice(0, 800) : undefined,
@@ -210,16 +305,15 @@ export class AiGateway {
     req: VisionRequest,
     opts: { runId?: number; label?: string } = {},
   ): Promise<ChatResponse> {
-    if (!this.provider) throw new Error('AI provider 未启用');
-    const model = req.model ?? this.visionModel;
-    if (!model) throw new Error('未配置 AI_VLM_MODEL');
-    const response = await this.provider.vision({ ...req, model });
+    const rt = this.requireRuntime('vision');
+    const model = req.model ?? rt.model;
+    const response = await rt.provider!.vision({ ...req, model });
     if (opts.runId !== undefined) {
       this.addTokens(opts.runId, response.usage.totalTokens);
       this.recordStep(opts.runId, {
         type: 'model_call',
         toolName: opts.label ?? 'vision',
-        input: { model, images: req.images.length },
+        input: { model, baseUrl: rt.baseUrl, images: req.images.length },
         output: {
           text: response.text.slice(0, 2_000),
           reasoning: response.reasoning ? response.reasoning.slice(0, 800) : undefined,
@@ -237,16 +331,15 @@ export class AiGateway {
     req: EmbedRequest,
     opts: { runId?: number; label?: string } = {},
   ): Promise<EmbedResponse> {
-    if (!this.provider) throw new Error('AI provider 未启用');
-    const model = req.model ?? this.embedModel;
-    if (!model) throw new Error('未配置 AI_EMBED_MODEL');
+    const rt = this.requireRuntime('embed');
+    const model = req.model ?? rt.model;
     const started = Date.now();
-    const response = await this.provider.embed({ ...req, model });
+    const response = await rt.provider!.embed({ ...req, model });
     if (opts.runId !== undefined) {
       this.recordStep(opts.runId, {
         type: 'model_call',
         toolName: opts.label ?? 'embed',
-        input: { model, inputs: req.input.length },
+        input: { model, baseUrl: rt.baseUrl, inputs: req.input.length },
         output: { dimensions: response.dimensions, count: response.vectors.length },
         status: 'succeeded',
         latencyMs: Date.now() - started,

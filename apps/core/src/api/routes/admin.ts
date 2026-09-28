@@ -49,4 +49,27 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
 
     return { ok: true, count, tagsAdded, tookMs: Date.now() - started };
   });
+
+  app.post('/api/admin/reindex-embeddings', async (_req, reply) => {
+    if (!ctx.ai.embedEnabled) {
+      return reply.status(400).send({
+        error: 'embed_disabled',
+        message: '未配置 embedding 能力：请设置 AI_EMBED_MODEL（可选 AI_EMBED_BASE_URL / AI_EMBED_API_KEY）',
+      });
+    }
+    const ids = (
+      ctx.sqlite.prepare(`SELECT id FROM media_asset ORDER BY id`).all() as { id: number }[]
+    ).map((r) => r.id);
+
+    let enqueued = 0;
+    for (const id of ids) {
+      const jobId = ctx.queue.enqueue(
+        'embedding.create',
+        { mediaId: id },
+        { dedupeKey: `embedding.create:${id}`, priority: 1 },
+      );
+      if (jobId !== undefined) enqueued += 1;
+    }
+    return { ok: true, total: ids.length, enqueued };
+  });
 }

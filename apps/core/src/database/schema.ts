@@ -15,7 +15,7 @@ export const TAG_SOURCES = ['user', 'rule', 'llm', 'vision'] as const;
 export const EXTRACTED_BY = ['rule', 'llm', 'vision', 'mixed'] as const;
 export const EMBEDDING_KINDS = ['text', 'image'] as const;
 export const JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead'] as const;
-export const RUN_KINDS = ['enrich', 'agent', 'search', 'rerank'] as const;
+export const RUN_KINDS = ['enrich', 'embedding', 'agent', 'search', 'rerank'] as const;
 export const RUN_STATUSES = ['running', 'succeeded', 'failed', 'cancelled'] as const;
 export const STEP_TYPES = [
   'intent',

@@ -5,6 +5,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../config.js';
+import { loadVecExtension } from '../vector/store.js';
 import * as schema from './schema.js';
 
 export type Db = BetterSQLite3Database<typeof schema>;
@@ -12,6 +13,7 @@ export type Db = BetterSQLite3Database<typeof schema>;
 export interface DbHandle {
   db: Db;
   sqlite: Database.Database;
+  vecAvailable: boolean;
   close: () => void;
 }
 
@@ -25,15 +27,18 @@ export function openDatabase(config: AppConfig, logger: Logger): DbHandle {
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('synchronous = NORMAL');
 
+  const vecAvailable = config.VEC_ENABLED ? loadVecExtension(sqlite, logger) : false;
+
   const db = drizzle(sqlite, { schema });
 
   const migrationsFolder = path.join(import.meta.dirname, '..', '..', 'drizzle');
   migrate(db, { migrationsFolder });
-  logger.info({ dbPath, migrationsFolder }, '数据库已就绪（迁移已应用）');
+  logger.info({ dbPath, migrationsFolder, vecAvailable }, '数据库已就绪（迁移已应用）');
 
   return {
     db,
     sqlite,
+    vecAvailable,
     close: () => {
       try {
         sqlite.pragma('wal_checkpoint(TRUNCATE)');

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SETTING_KEYS } from '@tma/shared';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ import { api, getCoreUrl, setCoreUrl } from '@/lib/api';
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings });
+  const caps = useQuery({ queryKey: ['ai-capabilities'], queryFn: api.aiCapabilities });
 
   const [coreUrl, setCoreUrlDraft] = useState(getCoreUrl());
   const [targetChat, setTargetChat] = useState('');
@@ -44,8 +46,20 @@ export function SettingsPage() {
 
   const reindex = useMutation({
     mutationFn: api.reindexSearch,
-    onSuccess: (res) => toast.success(`搜索索引已重建：${res.count} 项，${res.tookMs} ms`),
+    onSuccess: (res) => toast.success(`搜索索引已重建：${res.count} 项，${res.tookMs} ms（新回填 ${res.tagsAdded} 个标签）`),
   });
+
+  const reindexVectors = useMutation({
+    mutationFn: api.reindexEmbeddings,
+    onSuccess: (res) => toast.success(`已入队 ${res.enqueued}/${res.total} 条向量化任务`),
+    onError: (err) => toast.error(err instanceof Error ? err.message : '入队失败'),
+  });
+
+  const capRows = [
+    { key: 'chat', label: '文本（Chat）', env: 'AI_CHAT_MODEL' },
+    { key: 'vision', label: '视觉（Vision）', env: 'AI_VLM_MODEL' },
+    { key: 'embed', label: '向量（Embedding）', env: 'AI_EMBED_MODEL' },
+  ] as const;
 
   return (
     <div className="max-w-2xl space-y-5 p-6">
@@ -140,6 +154,66 @@ export function SettingsPage() {
                 保存
               </Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">AI 能力（各能力可分别配置模型与服务商）</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          {capRows.map((row) => {
+            const status = caps.data?.[row.key];
+            return (
+              <div key={row.key} className="flex items-center gap-2 text-xs">
+                <span className="w-32 text-muted-foreground">{row.label}</span>
+                {status?.enabled ? (
+                  <>
+                    <Badge variant="secondary" className="text-[10px]">已启用</Badge>
+                    <span className="font-mono">{status.model}</span>
+                    <span className="truncate text-muted-foreground" title={status.baseUrl ?? ''}>
+                      {status.baseUrl}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Badge variant="outline" className="text-[10px]">未启用</Badge>
+                    <span className="text-muted-foreground">
+                      在 .env 设置 <code className="font-mono">{row.env}</code>
+                      （可用 AI_{row.key.toUpperCase()}_BASE_URL / _API_KEY 指定不同服务商）
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          <Separator />
+          <div className="flex items-center gap-2 text-xs">
+            <span className="w-32 text-muted-foreground">向量库（sqlite-vec）</span>
+            {caps.data?.vector.available ? (
+              <>
+                <Badge variant="secondary" className="text-[10px]">就绪</Badge>
+                <span>
+                  {caps.data.vector.dim} 维 · 已向量化 {caps.data.vector.embeddedCount} 条
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">尚未建立（配置 Embedding 后自动创建）</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reindexVectors.mutate()}
+              disabled={reindexVectors.isPending || !caps.data?.embed.enabled}
+            >
+              {reindexVectors.isPending ? '入队中…' : '重建向量索引'}
+            </Button>
+            <span className="text-[11px] text-muted-foreground">
+              内容未变化的媒体会走缓存不重复计费；维度变化时自动重建向量表。
+            </span>
           </div>
         </CardContent>
       </Card>
