@@ -1,0 +1,20 @@
+{
+  "name": "telegram-media-archive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n core,ui -c blue,magenta \"pnpm dev:core\" \"pnpm dev:desktop\"",
+    "dev:core": "pnpm -F @tma/core dev",
+    "dev:desktop": "pnpm -F @tma/desktop tauri dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

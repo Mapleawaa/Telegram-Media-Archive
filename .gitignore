@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+target/
+*.tsbuildinfo
+coverage/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.session
+.session/
+
+# local data
+apps/core/.data/
+.data/
+*.db
+*.db-wal
+*.db-shm
+
+# tauri
+apps/desktop/src-tauri/gen/
+
+# logs & misc
+*.log
+logs/
+.DS_Store
+Thumbs.db
