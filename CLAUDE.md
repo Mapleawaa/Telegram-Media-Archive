@@ -14,7 +14,8 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ⏳（下一步）** → P3 → P4 → P5。
+功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅（2026-09-29）→ P3（下一步）** → P4 → P5。
+P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
 真机库 23 条媒体；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
@@ -143,4 +144,5 @@ pnpm -F @tma/core db:generate          # 生成 Drizzle 迁移（自定义 SQL �
 
 ## 下一步
 
-`docs/handoff/NEXT-P2-P5-handoff.md` → P2（AI 介入分流器：来源白/黑名单 + 命中不进模型 + 人工分类队列）。
+**P3 — 分类体系 + 标签智能**（见 `docs/handoff/NEXT-P2-P5-handoff.md` §6）：
+`media_asset.category / category_source / is_sensitive` 列已在迁移 `0002` 建好（P2 的 classify 已会写），P3 只需接规则映射 + AI 的 `category` 落库 + 人工优先覆盖，并新增 `tags.consolidate` 标签压缩作业与 `GET /api/library/sections`。

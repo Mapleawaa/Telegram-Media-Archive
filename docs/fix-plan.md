@@ -9,7 +9,7 @@
 | 阶段 | 主题 | 覆盖项 | 预期 |
 |---|---|---|---|
 | **P1** | ✅ 完成（2026-09-29） | A1 A5 A8 B1 B2 B3 B4 B4b E4 | 已提交，见下方清单 |
-| **P2** | ⏳ 下一步 | U1 = G1 G2 G3 G4；根治 A3 | 1-1.5 天 |
+| **P2** | ✅ 完成（2026-09-29，演示库实机验收；真机待转发确认） | U1 = G1 G2 G3 G4；根治 A3 | 见 `docs/handoff/P2-ai-routing.md` |
 | **P3** | 分类体系 + 标签智能 | U3 U5 = G5 G6；B5 B8 E2 E3 | 1-1.5 天 |
 | **P4** | Desktop UI 重设计（影音墙） | U2 = G8；B7 B10 B11 B12；隐私模式入口 G7 | 2-3 天（含多轮视觉审阅） |
 | **P5** | 细节与运维收口 | B6 B9 B13 B14；D1 D2 D3 D4 D5 D8 | 1 天 |
@@ -34,17 +34,19 @@
 | P1-10 | B4b 推广尾巴清理（新发现） | ✅ `cleanRuleTitle`；真机 4 条清理 |
 | — | 回归 | ✅ 单测 63 全绿 + 冒烟 21/21 |
 
-## P2 — AI 介入分流器（用户 U1 方案）
+## P2 — AI 介入分流器（用户 U1 方案）✅ 完成（2026-09-29）
 
-> 核心：**不是所有内容都进模型**。按来源群配置策略，命中「跳过 AI」的来源 → 直接进人工分类，模型完全不参与。
+> 核心：**不是所有内容都进模型**。按来源配置策略，命中「跳过 AI」的来源 → 直接进人工分类，模型完全不参与。
+> 收口证据：`docs/handoff/P2-ai-routing.md`（含实机截图）。
 
-| # | 任务 | 细节 | 验收 |
+| # | 任务 | 细节 | 结果 |
 |---|---|---|---|
-| P2-1 | **G1 采集转发来源** | 解析 grammY `forward_origin`（channel/chat/user/hidden_user）+ 兼容 `forward_from_chat`；`telegram_message` 新增列：`forward_from_chat_id/title/username`、`forward_date`（迁移 0002） | 真机转发一条后 DB 可见来源群 |
-| P2-2 | **G2 来源策略配置** | settings: `ai_skip_sources: [{chatId, title}]`；API `GET /api/sources/forward`（观察到的来源 + 条数 + 策略）；设置页「来源与 AI 策略」面板（开关式） | 列表中可切换「走 AI / 跳过 AI」 |
-| P2-3 | **G3 分流逻辑** | ingest 时判断：命中跳过策略 → **不入队 ai.enrich**，`ai_status='manual'`（新增状态）+ audit `media.manual_review`；启用 `embedding` 时是否也跳过由策略决定（默认跳过） | 黑名单来源媒体：`ai_runs` 无记录、进「待分类」 |
-| P2-4 | **G4 人工分类界面** | Inbox 新增「待分类」Tab；点开＝分类面板：**预填**附言 hashtag/规则标签 → 常用分类 chips（可配）→ 自由标签输入 → 「标记敏感」→ 完成（写 user 标签 + 分类 + `ai_status='skipped'`） | 一条黑名单来源内容 10 秒内完成人工归类 |
-| P2-5 | 智能预填（可选增强） | 附言提取的 hashtag 直接成为候选标签；常用分类 chips 从历史 user 标签聚合 Top N | 预填命中率目测 >60% |
+| P2-1 | **G1 采集转发来源** | 解析 grammY `forward_origin` 四型 + 兼容旧字段；`telegram_message` 新增 6 列 + 索引（迁移 `0002`） | ✅ 单测 7 例覆盖 4 型 + 旧字段；重复投递回填 |
+| P2-2 | **G2 来源策略配置** | settings `ai_skip_sources: string[]`（key 形如 `channel:<id>` / `chat:<id>` / `user:<id>` / `name:<文本>`）；`GET /api/sources/forward`；设置页「来源与 AI 策略」开关面板 | ✅ 演示库 5 个来源可见、可切换 |
+| P2-3 | **G3 分流逻辑** | ingest 命中 → **不入队 ai.enrich / embedding.create**，`ai_status='manual'` + `ai_skip=1` + 事件 `media.manual_review` | ✅ 实测 `ai_runs` 0 记录；Inbox 新增「待分类」分组 |
+| P2-4 | **G4 人工分类界面** | Inbox「待分类」Tab + `ManualClassifyDialog`（附言 hashtag 预填、历史常用 user 标签 Top10、自由输入、六类 chips、标记敏感）；`POST /api/media/:id/classify` + `GET /api/tags/top` | ✅ 实机走通；分类落库 + audit `media.classified` |
+| P2-5 | 单条手动开关 | `POST /api/media/:id/ai-policy {skip}`：跳过 → 撤销未跑作业 + manual；恢复 → 重新入队 ai.enrich。详情页动作条开关 | ✅ 实机三态往返正确（解决「转发自群但来源是人」的灰区） |
+| — | 迁移附带 | 因 P2-4 需要落库，`category / category_source / is_sensitive / ai_skip` 一并建在 `0002` | ✅ **P3 不要再加这些列** |
 
 ## P3 — 分类体系 + 标签智能
 

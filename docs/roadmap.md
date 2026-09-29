@@ -5,12 +5,12 @@
 
 ## 当前进度（2026-09-29）
 
-一句话：**功能里程碑 M0/M1/M3/M4 完成；当前在做「地基整固」五阶段计划（P1 ✅ → P2-P5）**——接手入口见 **`docs/handoff/NEXT-P2-P5-handoff.md`**，计划与问题清单见 `docs/fix-plan.md` / `docs/known-issues.md`。C 类（MTProto/Agent/Trace/打包/批量/真实 embedding）按用户裁定暂缓。真机库 23 条媒体全部富化完成。
+一句话：**功能里程碑 M0/M1/M3/M4 完成；「地基整固」P1 ✅ → P2 ✅ → P3 待开工**——接手入口见 **`docs/handoff/NEXT-P2-P5-handoff.md`**，P2 收口见 `docs/handoff/P2-ai-routing.md`，计划与问题清单见 `docs/fix-plan.md` / `docs/known-issues.md`。C 类（MTProto/Agent/Trace/打包/批量/真实 embedding）按用户裁定暂缓。真机库 23 条媒体全部富化完成（P2 后**新发生**的转发会记录来源，历史条目的来源列为空）。
 
 | 阶段 | 状态 | 内容 |
 |---|---|---|
 | P1 | ✅ | 地基快修：去重键 / 标题策略 / 标签治理（349→170）/ 坏标题清理 |
-| P2 | ⏳ | **AI 介入分流器**：来源白黑名单 + 命中不进模型 + 人工分类队列 |
+| P2 | ✅ | **AI 介入分流器**：来源多类型黑名单 + 命中不进模型 + 人工分类队列 + 单条开关（`docs/handoff/P2-ai-routing.md`；真机转发验收待办） |
 | P3 | ⬜ | 分类体系（电影/剧集/动漫/成人/图集/其他）+ AI 标签压缩 |
 | P4 | ⬜ | Desktop UI 重设计（深色影音墙，Jellyfin/Emby/Apple TV 式；必须用户实机审阅） |
 | P5 | ⬜ | 细节与运维收口（主源/删除/改标题、缓存清理、日志落盘、lint、ErrorBoundary） |
