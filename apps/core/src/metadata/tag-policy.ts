@@ -11,6 +11,42 @@ export type TagSource = 'user' | 'rule' | 'llm' | 'vision';
 
 export const MAX_TAGS_PER_ASSET = 8;
 
+/**
+ * 中文低价值标签（精确匹配）：ASCII 版本已在下面正则里，这里补 CJK。
+ * - 类型/格式词：模型的输出里几乎每张图都会带「图片」「照片」，白占配额
+ * - 占位词：模型没看出内容时的填充（未分类 / 待归档 / 来源未知…）
+ * - 方向词：横竖版可由 width/height 确定性算出，不该占标签位（架构原则 §38）
+ * 注意：不收 电影/剧集/动漫/图集 等分类词——它们是 P3 的分类体系取值。
+ */
+const LOW_VALUE_CJK = new Set([
+  '图片',
+  '照片',
+  '转发图片',
+  '截图',
+  '图像',
+  '视频',
+  '音频',
+  '文件',
+  '文档',
+  '动图',
+  '媒体',
+  '未分类',
+  '待归档',
+  '待补充信息',
+  '待整理',
+  '来源未知',
+  '未知',
+  '暂无',
+  '媒体归档',
+  '横版',
+  '横屏',
+  '竖版',
+  '竖图',
+  '竖屏',
+  '横向构图',
+  '纵向构图',
+]);
+
 const LOW_VALUE_RES: RegExp[] = [
   /^\d{3,4}\s*[x×]\s*\d{3,4}$/i, // 1280x720
   /^\d{3,4}\s*[pP]$/, // 720p / 1080p
@@ -29,6 +65,7 @@ export function normalizeTag(raw: string): string | null {
 
 export function isLowValueTag(tag: string, chatTitles: ReadonlySet<string>): boolean {
   if (LOW_VALUE_RES.some((re) => re.test(tag))) return true;
+  if (LOW_VALUE_CJK.has(tag)) return true;
   if (chatTitles.has(tag)) return true;
   return false;
 }

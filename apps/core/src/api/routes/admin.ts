@@ -3,8 +3,13 @@ import type { AppContext } from '../../context.js';
 import { mediaAsset, mediaMetadata, mediaTag } from '../../database/schema.js';
 import { rebuildSearchDoc } from '../../metadata/rebuild-search-doc.js';
 import { extractHashtags } from '../../metadata/rule-parser.js';
-import { pruneAssetTags } from '../../metadata/tag-policy.js';
-import { cleanRuleTitle, isBadAiTitleLike, isJunkTitle } from '../../metadata/title-policy.js';
+import { filterTags, pruneAssetTags } from '../../metadata/tag-policy.js';
+import {
+  cleanRuleTitle,
+  deriveTitleFromDescription,
+  isBadAiTitleLike,
+  isJunkTitle,
+} from '../../metadata/title-policy.js';
 import type { AppServer } from '../types.js';
 
 export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
@@ -23,6 +28,7 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
     let tagsRemoved = 0;
     let titlesCleared = 0;
     let titlesCleaned = 0;
+    let titlesRederived = 0;
     const tx = ctx.sqlite.transaction(() => {
       for (const m of messages) {
         let entities: unknown;
@@ -31,7 +37,9 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
         } catch {
           entities = undefined;
         }
-        for (const tag of extractHashtags(m.caption, entities)) {
+        // 与 ingest 保持一致：先过 filterTags 归一化 + 低价值过滤，
+        // 否则低价值 hashtag 会被反复回填、又被 prune 删掉（治理不收敛）
+        for (const tag of filterTags(extractHashtags(m.caption, entities), new Set())) {
           const info = ctx.db
             .insert(mediaTag)
             .values({ mediaAssetId: m.assetId, tag, source: 'rule' })
@@ -47,10 +55,15 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       ).map((r) => r.id);
       const titleRows = ctx.sqlite
         .prepare(
-          `SELECT a.id, a.canonical_title AS title, m.title_norm AS titleNorm
+          `SELECT a.id, a.canonical_title AS title, m.title_norm AS titleNorm, m.summary AS summary
            FROM media_asset a LEFT JOIN media_metadata m ON m.media_asset_id = a.id`,
         )
-        .all() as { id: number; title: string | null; titleNorm: string | null }[];
+        .all() as {
+        id: number;
+        title: string | null;
+        titleNorm: string | null;
+        summary: string | null;
+      }[];
       for (const row of titleRows) {
         // a) 规则标题推广尾巴清理（title_norm 与作为其副本的 canonical_title 同步）
         if (row.titleNorm) {
@@ -79,6 +92,26 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
             .where(eq(mediaAsset.id, row.id))
             .run();
           titlesCleared += 1;
+          continue;
+        }
+        // c) 历史「按字数硬切」的派生标题：若它是摘要某一行的前缀，
+        //    用改进后的按标点断句重新生成（真实案例：「…白西装坐皮椅持杖，身后黑」）
+        if (row.title && row.summary) {
+          const sourceLine = row.summary
+            .split('\n')
+            .map((l) => l.trim())
+            .find((l) => l.startsWith(row.title!) && l.length > row.title!.length);
+          if (sourceLine) {
+            const better = deriveTitleFromDescription(sourceLine);
+            if (better && better !== row.title) {
+              ctx.db
+                .update(mediaAsset)
+                .set({ canonicalTitle: better, updatedAt: new Date() })
+                .where(eq(mediaAsset.id, row.id))
+                .run();
+              titlesRederived += 1;
+            }
+          }
         }
       }
       for (const id of ids) {
@@ -99,6 +132,7 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       tagsRemoved,
       titlesCleared,
       titlesCleaned,
+      titlesRederived,
       tookMs: Date.now() - started,
     };
   });

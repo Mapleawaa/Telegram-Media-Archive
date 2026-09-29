@@ -54,15 +54,29 @@ describe('sanitizeAiTitle', () => {
 });
 
 describe('deriveTitleFromDescription', () => {
-  it('取首句并截断 24 字', () => {
+  it('取首句并在句中标点处断句（不再把词切一半）', () => {
     const desc = '一名白发绿衣的动漫角色装扮者躺在沙发上，身旁有一名黑衣蒙面人。画面涉及成人内容。';
-    const title = deriveTitleFromDescription(desc);
-    expect(title).toBe('一名白发绿衣的动漫角色装扮者躺在沙发上，身旁有一');
-    expect(title!.length).toBeLessThanOrEqual(24);
+    expect(deriveTitleFromDescription(desc)).toBe('一名白发绿衣的动漫角色装扮者躺在沙发上');
   });
 
-  it('一句话无标点时整体截断', () => {
-    expect(deriveTitleFromDescription('深海中的潜水员与发光水母')).toBe('深海中的潜水员与发光水母');
+  it('真实案例：不再出现「…身后黑」这种半截标题', () => {
+    const desc =
+      '肯德基爷爷化身黑帮教父，白西装坐皮椅持杖，身后黑衣人保镖护卫，配文威胁没请吃肯德基的人';
+    const title = deriveTitleFromDescription(desc)!;
+    expect(title).toBe('肯德基爷爷化身黑帮教父，白西装坐皮椅持杖');
+    expect(title.endsWith('黑')).toBe(false);
+  });
+
+  it('首句在上限内则完整保留（不再因 24 字丢字）', () => {
+    expect(deriveTitleFromDescription('粉发熊帽动漫少女在夜景窗边与男子亲密接触的成人向画面')).toBe(
+      '粉发熊帽动漫少女在夜景窗边与男子亲密接触的成人向画面',
+    );
+  });
+
+  it('无句中标点时按上限截断并加省略号', () => {
+    const title = deriveTitleFromDescription('深海中的潜水员与发光水母在珊瑚礁间缓慢游动并留下长长的气泡尾迹不断上升');
+    expect(title!.endsWith('…')).toBe(true);
+    expect(title!.length).toBeLessThanOrEqual(29);
   });
 
   it('过短或空返回 undefined', () => {

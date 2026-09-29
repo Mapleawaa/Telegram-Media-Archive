@@ -28,8 +28,14 @@ describe('isLowValueTag', () => {
     expect(isLowValueTag('cosplay', new Set(['云汐的文件']))).toBe(false);
   });
 
-  it('保留正常标签', () => {
-    for (const tag of ['二次元', 'cosplay', '赛博朋克', '成人向', '剧集']) {
+  it('过滤中文类型词 / 占位词 / 方向词（图片类媒体的真实噪声）', () => {
+    for (const tag of ['图片', '照片', '转发图片', '截图', '未分类', '待归档', '来源未知', '横版', '竖图', '横向构图', '媒体归档']) {
+      expect(isLowValueTag(tag, NO_CHATS)).toBe(true);
+    }
+  });
+
+  it('保留正常标签（含将来要当分类用的词）', () => {
+    for (const tag of ['二次元', 'cosplay', '赛博朋克', '成人向', '剧集', '电影', '图集', '动漫']) {
       expect(isLowValueTag(tag, NO_CHATS)).toBe(false);
     }
   });

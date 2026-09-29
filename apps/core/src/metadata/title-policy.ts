@@ -19,13 +19,32 @@ export function isJunkTitle(title: string | null | undefined): boolean {
   return false;
 }
 
-/** 从视觉描述生成短标题：取首句、截断到 24 字 */
+/** 从视觉描述生成短标题的长度上限 */
+export const MAX_DERIVED_TITLE = 28;
+
+// 句中标点：优先在这些位置断句，避免「…身后黑」这种把词切一半的标题
+const SOFT_BREAK_RE = /[，、；：,;:]/;
+
+/**
+ * 从视觉描述生成短标题：取首句，超长时**在句中标点处**断句。
+ * （旧实现按 24 字硬切，真实数据出现「…白西装坐皮椅持杖，身后黑」这种半截标题）
+ */
 export function deriveTitleFromDescription(description: string | undefined): string | undefined {
   if (!description) return undefined;
-  const firstSentence = description.split(/[。！？!?\n]/)[0]?.trim() ?? '';
-  const title = firstSentence.slice(0, 24).trim();
-  if (title.length < 4) return undefined;
-  return title;
+  const firstSentence = (description.split(/[。！？!?\n]/)[0] ?? '').trim();
+  if (firstSentence.length < 4) return undefined;
+  if (firstSentence.length <= MAX_DERIVED_TITLE) return firstSentence;
+
+  const window = firstSentence.slice(0, MAX_DERIVED_TITLE);
+  let cut = -1;
+  for (let i = window.length - 1; i > 0; i -= 1) {
+    if (SOFT_BREAK_RE.test(window[i]!)) {
+      cut = i;
+      break;
+    }
+  }
+  const title = cut > 0 ? window.slice(0, cut).trim() : `${window.trim()}…`;
+  return title.length >= 4 ? title : undefined;
 }
 
 /** 清理规则标题中的推广尾巴/频道句柄（真实案例：「喵叽小糯 白丝 32Cosplay电报TG@yijiqwq」） */
