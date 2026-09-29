@@ -5,7 +5,15 @@
 
 ## 当前进度（2026-09-29）
 
-一句话：**M0 → M1 → M3 → M4 已完成，M2 未做**——即架构稿 Phase 1/2（归档+库+搜索）、Phase 3（AI 元数据）、Phase 4（向量 RAG）已落地；Phase 5（Agent）可开工。真机库 23 条媒体全部富化完成（24 个提交）。
+一句话：**功能里程碑 M0/M1/M3/M4 完成；当前在做「地基整固」五阶段计划（P1 ✅ → P2-P5）**——接手入口见 **`docs/handoff/NEXT-P2-P5-handoff.md`**，计划与问题清单见 `docs/fix-plan.md` / `docs/known-issues.md`。C 类（MTProto/Agent/Trace/打包/批量/真实 embedding）按用户裁定暂缓。真机库 23 条媒体全部富化完成。
+
+| 阶段 | 状态 | 内容 |
+|---|---|---|
+| P1 | ✅ | 地基快修：去重键 / 标题策略 / 标签治理（349→170）/ 坏标题清理 |
+| P2 | ⏳ | **AI 介入分流器**：来源白黑名单 + 命中不进模型 + 人工分类队列 |
+| P3 | ⬜ | 分类体系（电影/剧集/动漫/成人/图集/其他）+ AI 标签压缩 |
+| P4 | ⬜ | Desktop UI 重设计（深色影音墙，Jellyfin/Emby/Apple TV 式；必须用户实机审阅） |
+| P5 | ⬜ | 细节与运维收口（主源/删除/改标题、缓存清理、日志落盘、lint、ErrorBoundary） |
 
 | 已交付能力 | 状态 | 备注 |
 |---|---|---|
@@ -25,43 +33,15 @@
 | M2 | ⬜ | MTProto 通道：历史扫描/续扫/copy（无转发头）、Sources 页 | 同一套 contract test 双实现全过 | 3-5 天 |
 | M3 | ✅ | AI 富化：LLM 标题/摘要/标签 + 缩略图 VLM、ai_runs/steps、Inbox | 真机 23 条全部 done + mock 全链路 + 46 单测（2026-09-29） | 4-6 天 |
 | M4 | ✅ | Embedding + sqlite-vec + Hybrid 检索 + rerank | sqlite-vec/缓存/融合/降级 全部单测覆盖，mock hybrid 检索 3ms；真实 embedding 待接入 | 3-4 天 |
-| M5 | ⏳ | Agent：工具白名单 + intent + 每步 trace（顺带 chat 模型 rerank） | 「找那个 4K 赛博朋克片发给我」端到端成功 | 4-6 天 |
+| M5 | ⬜ 暂缓 | Agent：工具白名单 + intent + 每步 trace（顺带 chat 模型 rerank） | 「找那个 4K 赛博朋克片发给我」端到端成功 | 4-6 天 |
 | M6 | ⬜ | AI Activity 实时时间线 + Run Detail + React Flow 路径图 | WS 驱动逐步出现，无需刷新 | 3-4 天 |
 | M7 | ⬜ | 打包：Node SEA sidecar 进 Tauri；Remote Core 路线文档 | 干净 Windows 无 node/pnpm 可装可用 | 4-6 天 |
 
 ## TODO（待办池）
 
-### A. 已发现待修（真机数据反馈）
-
-| 优先级 | 项 | 说明 | 状态 |
-|---|---|---|---|
-| P1 | **垃圾标题 AI 补位** | `#20`/`video`/`1`/`2099396071722440550 0` 等文件名残留占据标题位；拟在规则标题为纯数字/通用词/文件名残留时允许 AI 标题覆盖（**待用户确认策略**） | 待确认 |
-| P1 | **真实 embedding 接入** | DeepSeek 无 embedding；配 `AI_EMBED_*` 指向 Ollama `bge-m3`（免费）或硅基流动/智谱后，设置页点「重建向量索引」即可；当前语义路为 mock 向量 | 待账户/环境 |
-| P2 | Bot Token 轮换 | 开发期日志曾出现完整 token（脱敏已修复）；BotFather `/revoke` 后更新 `.env` | 待用户 |
-| P2 | 缩略图缓存管理 | 设置页增加「清空缩略图缓存」（当前只能手动删 `.data/thumbnails`） | 待做 |
-| P3 | 标签冗余存储 | 同一标签在 media_tag 仍按来源各存一行（列表已去重显示）；是否物理合并见 M5 决策 | 观察 |
-| P3 | rerank 阶段 | 计划中的 LLM rerank 未实现（随 M5 用 chat 模型做候选重排） | 随 M5 |
-
-### B. 维护建议（运维/数据）
-
-| 项 | 建议 |
-|---|---|
-| **用户生成数据备份** | `media_tag(source=user)`、`media_annotation`、`settings` 是**不可从 Telegram 重建**的数据（其余皆派生物）→ 建议加 `pnpm -F @tma/core export:user-data`（导出 JSON）并定期执行；这是目前数据安全的最大缺口 |
-| 日志落盘 | core 目前只输出 stdout（终端关掉即丢）；长驻使用前应配 pino 文件输出 + 轮转（可与 M7 打包一起做） |
-| 冒烟脚本 | 加 `scripts/smoke.mts`：伪造一条 ingest → enrich → embed → search → forward(dry-run) 全链路断言，改代码后一条命令回归（比单测更接近真机） |
-| 定期维护 | 规则升级后点「重建搜索索引」（已实现，含标签回填）；换 embedding 模型后点「重建向量索引」；数据量上万后考虑 `VACUUM` |
-| core 常驻 | 现在依赖 `pnpm dev`（终端进程）；长期归档建议 M7 打包 sidecar 或先用 Windows 计划任务 |
-| 依赖升级 | TypeScript 钉 5.9.3（勿升 TS7）；drizzle/better-sqlite3 升级必须跑迁移 + FTS 重建回归 |
-| 磁盘监控 | `.data/`（DB + 缩略图）随归档量增长；C 盘目前 59GB 余量，建议归档破千前检查 |
-
-### C. 后续功能（按价值排序）
-
-1. **M2 MTProto**：扫描频道历史批量重建（「Telegram 是事实源」原则的另一半）+ 从源频道 copy 无转发头 + Sources 页
-2. **M5 Agent**：自然语言 → 工具白名单调用（search/get/find_similar/forward/annotate/tag/reindex），含候选 rerank 与执行轨迹
-3. **批量操作**：媒体库多选 → 批量打标签/转发/重新分析（23 条后很快需要；相册批量转发需保持相册语义）
-4. **M6 Trace UI**：AI 活动页升级为实时时间线 + React Flow 执行路径图
-5. **详情页增强**：重复来源合并视图（多来源已记录）、AI 解析结果与用户标签的来源区分展示
-6. **M7 打包 + Remote Core 路线**：Tauri sidecar（免 Node 环境安装）+ 远程模式文档（PostgreSQL + pgvector）
+> 问题清单与待办已移到独立文档，避免两处维护漂移：
+> - **待修/体验/功能/运维/决策** → `docs/known-issues.md`（编号 A1…E4 + 用户反馈 U1…）
+> - **当前五阶段计划（P1-P5）与任务书** → `docs/fix-plan.md`、`docs/handoff/NEXT-P2-P5-handoff.md`
 
 ## 关键决策速查
 

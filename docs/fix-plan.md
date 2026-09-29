@@ -2,6 +2,7 @@
 
 > 依据：`docs/known-issues.md`（A-E）+ 用户 2026-09-29 反馈（U1 AI 分流 / U2 Desktop UI / U3 分类体系 / U4 敏感内容 / U5 标签压缩）
 > 范围裁定：**C 类全部暂缓**（MTProto/Agent/Trace/打包/批量/真实 embedding/自动重试/reply 上下文）；本计划只做「地基」：bug + 数据质量 + AI 介入策略 + 分类体系 + UI 重设计 + 运维件。
+> **接手请直接读 → `docs/handoff/NEXT-P2-P5-handoff.md`**（环境启动 / 代码地图 / P2-P5 逐项任务书 / 收口流程 / 已知坑）。
 
 ## 阶段总览
 
