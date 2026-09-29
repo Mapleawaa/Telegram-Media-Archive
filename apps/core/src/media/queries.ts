@@ -51,7 +51,7 @@ SELECT a.id, a.canonical_title, a.type, a.mime, a.size, a.duration_sec, a.width,
        (SELECT COUNT(*) FROM telegram_message tm WHERE tm.media_asset_id = a.id) AS source_count,
        (SELECT tm.thumbnail_file_id FROM telegram_message tm
          WHERE tm.media_asset_id = a.id AND tm.is_primary = 1 LIMIT 1) AS primary_thumb,
-       (SELECT group_concat(t.tag, '|') FROM media_tag t WHERE t.media_asset_id = a.id) AS tags
+       (SELECT group_concat(DISTINCT t.tag) FROM media_tag t WHERE t.media_asset_id = a.id) AS tags
 FROM media_asset a
 LEFT JOIN media_metadata m ON m.media_asset_id = a.id
 `;
@@ -70,7 +70,9 @@ function mapListRow(row: ListRow): MediaListItem {
     year: row.year,
     aiStatus: row.ai_status as MediaListItem['aiStatus'],
     sourceCount: row.source_count,
-    tags: row.tags ? row.tags.split('|') : [],
+    tags: row.tags
+      ? [...new Set(row.tags.split(',').map((t) => t.trim()))].filter(Boolean)
+      : [],
     hasThumbnail: row.primary_thumb !== null,
     createdAt: row.created_at,
   };

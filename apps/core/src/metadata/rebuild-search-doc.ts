@@ -30,6 +30,7 @@ export function rebuildSearchDoc(ctx: AppContext, assetId: number): void {
     .from(mediaTag)
     .where(eq(mediaTag.mediaAssetId, assetId))
     .all();
+  const uniqueTags = [...new Set(tags.map((t) => t.tag))];
 
   const extra = [
     asset.type,
@@ -48,7 +49,7 @@ export function rebuildSearchDoc(ctx: AppContext, assetId: number): void {
     title: asset.canonicalTitle ?? meta?.titleNorm ?? meta?.fileName ?? null,
     filename: meta?.fileName ?? null,
     caption: primary?.caption ?? null,
-    tags: tags.map((t) => t.tag).join(' ') || null,
+    tags: uniqueTags.join(' ') || null,
     summary: meta?.summary ?? null,
     extra: extra || null,
     updatedAt: new Date(),

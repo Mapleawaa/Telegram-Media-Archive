@@ -72,8 +72,21 @@ POST /api/media/1/enrich → 400 {"error":"ai_disabled","message":"AI 未启用�
 | 标签冗余 | 同一标签可能来自多个来源（rule/llm/vision 各一条，唯一键含 source），UI 目前合并展示；去重展示留到 UI 打磨 |
 | 偏差记录 | 计划中 `ai.enrich` 的标题策略由"AI 覆盖"改为"规则优先、AI 补位"（符合架构稿 §38 确定性优先） |
 
-## 5. 下一里程碑入口
+## 5. 后续修复（2026-09-29，真机数据反馈）
 
-- **M4（向量 RAG）**：sqlite-vec 已在依赖中；需 embedding 模型（DeepSeek 无此能力 → 硅基流动 bge-m3/智谱 embedding-3/本地 Ollama bge-m3 三选一），`media_embedding` 表与 `embedding.create` 作业可先用 mock 向量搭好
+用户陆续归档到 23 条后发现并修复：
+
+| 问题 | 现象 | 修复 |
+|---|---|---|
+| 视觉 JSON 截断 | 推理型模型输出到一半被 max_tokens 截断 → 解析失败 → partial（#21/#6/#5） | `repairTruncatedJson`：按字符串/括号状态修补未闭合 JSON；vision max_tokens 提到 4096；prompt 要求输出简短 |
+| 内容审核拒答被当失败 | 模型拒答（措辞多样，关键词法不可靠）→ 一直 partial、重试也白费（#20/#13/#12/#11） | 判据改为「输出完全没有 `{` 即非 JSON 说明性文本」→ 记为 `vision.unusable` decision 步骤，不计为失败、不重试；状态按 chat 单独判定为 done |
+| 标签重复显示 | 同一标签来自 llm/vision 多来源 → 列表出现 `cos, cos` | 列表查询 `group_concat(DISTINCT)` + 搜索文档去重 |
+| 垃圾标题 | `#20`、`video`、`1` 等文件名残留成为标题 | **待定**：拟放宽 AI 标题补位策略（规则标题为纯数字/文件名残留/通用词时允许 AI 覆盖），等用户确认 |
+
+修复后真机数据：**23 条全部 done**（partial 0 / failed 0），搜索索引重建 33ms。
+
+## 6. 下一里程碑入口
+
+- **M4（向量 RAG）**：已完成（见 M4 handoff）；真实 embedding 待接入（Ollama bge-m3 或充值后的硅基流动/智谱）
 - **M2（MTProto）**：与 AI 账户解耦，需要用户小号 session
-- 真实库现状：4 条真实媒体已富化完成；新归档会自动入队 ai.enrich（`.env` 已配 DeepSeek）
+- 真实库现状：23 条媒体全部富化完成；新归档自动入队 ai.enrich → embedding.create（`.env` 已配 DeepSeek）

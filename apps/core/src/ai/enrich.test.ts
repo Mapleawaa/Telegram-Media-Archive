@@ -9,7 +9,7 @@ import { ingestMessage } from '../ingestion/ingest.js';
 import { ensureThumbnail } from '../telegram/bot/thumbnail.js';
 import type { TelegramClient } from '../telegram/client.js';
 import type { IncomingMessage } from '../telegram/types.js';
-import { enrichMedia } from './enrich.js';
+import { enrichMedia, looksLikeRefusal, parseJsonLoose } from './enrich.js';
 
 function makeClient(): TelegramClient {
   return {
@@ -52,6 +52,32 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tma-ai-test-'));
   return createTestContext({ dataDir, ...overrides } as never);
 }
+
+describe('parseJsonLoose / looksLikeRefusal', () => {
+  it('正常 JSON 与代码围栏', () => {
+    expect(parseJsonLoose('{"a":1}')).toEqual({ a: 1 });
+    expect(parseJsonLoose('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+  });
+
+  it('截断的 JSON（推理模型 max_tokens 耗尽）能修补出可用字段', () => {
+    const truncated = '{"description":"一个动漫角色躺在床上","themes":["二次元","人物"],"mood":["暧昧"';
+    const parsed = parseJsonLoose<{ description?: string; themes?: string[] }>(truncated);
+    expect(parsed?.description).toBe('一个动漫角色躺在床上');
+    expect(parsed?.themes).toEqual(['二次元', '人物']);
+  });
+
+  it('带前后杂文的 JSON 能抓取对象', () => {
+    const parsed = parseJsonLoose<{ a: number }>('好的，这是结果：{"a":1} 以上。');
+    expect(parsed).toEqual({ a: 1 });
+  });
+
+  it('拒答文本被识别（且不误伤正常 JSON）', () => {
+    expect(looksLikeRefusal('抱歉，我无法按照要求描述这张图片。')).toBe(true);
+    expect(looksLikeRefusal('I cannot help with that request.')).toBe(true);
+    expect(looksLikeRefusal('{"description":"一位少女"}')).toBe(false);
+    expect(looksLikeRefusal('从图文内容来看，用户发来的图片涉及不当画面，我无法描述。')).toBe(true);
+  });
+});
 
 describe('enrichMedia', () => {
   it('AI 未启用：归档后 ai_status=skipped 且不入队', () => {
@@ -121,6 +147,48 @@ describe('enrichMedia', () => {
     expect(outcome.status).toBe('done');
     const meta = ctx.db.select().from(mediaMetadata).all()[0]!;
     expect(meta.extractedBy).toBe('llm');
+  });
+
+  it('视觉返回非 JSON（内容审核拒答）：不计为失败，状态 done 并留下可读步骤', async () => {
+    const ctx = makeCtx({ AI_PROVIDER: 'mock', AI_CHAT_MODEL: 'mock/chat', AI_VLM_MODEL: 'mock/vision' });
+    const ingested = ingestMessage(ctx, makeMsg());
+
+    const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
+    const stub: AIProvider = {
+      id: 'stub',
+      chat: () =>
+        Promise.resolve({
+          text: '{"title":"T","summary":"S","tags":["a"]}',
+          toolCalls: [],
+          finishReason: 'stop',
+          usage,
+          model: 'stub',
+          latencyMs: 1,
+        }),
+      vision: () =>
+        Promise.resolve({
+          text: '从图文内容来看，用户发来的图片涉及不当画面，我无法按要求描述。',
+          toolCalls: [],
+          finishReason: 'stop',
+          usage,
+          model: 'stub',
+          latencyMs: 1,
+        }),
+      embed: () => Promise.reject(new Error('unused')),
+    };
+    Object.assign(ctx.ai.runtimes.chat, { provider: stub, enabled: true });
+    Object.assign(ctx.ai.runtimes.vision, { provider: stub, enabled: true });
+
+    const outcome = await enrichMedia(ctx, ctx.ai, makeClient(), ingested.assetId, ensureThumbnail);
+    expect(outcome.status).toBe('done');
+
+    const steps = ctx.sqlite
+      .prepare(`SELECT tool_name AS toolName, status FROM ai_steps ORDER BY step_index`)
+      .all() as { toolName: string; status: string }[];
+    expect(steps.map((s) => s.toolName)).toContain('vision.unusable');
+
+    const asset = ctx.db.select().from(mediaAsset).all()[0]!;
+    expect(asset.aiStatus).toBe('done');
   });
 
   it('provider 故障：ai_status=failed 且抛出（交给队列重试），归档数据不受影响', async () => {

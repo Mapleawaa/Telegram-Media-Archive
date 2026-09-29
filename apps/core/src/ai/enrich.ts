@@ -28,26 +28,85 @@ export interface VisionEnrichment {
 type AiStatus = 'pending' | 'partial' | 'done' | 'failed' | 'skipped';
 
 const MAX_COMMENT = 1;
-export function parseJsonLoose<T>(text: string): T | null {
-  const cleaned = text
+
+function stripCodeFence(text: string): string {
+  return text
     .replace(/^\s*```(?:json)?/i, '')
     .replace(/```\s*$/, '')
     .trim();
+}
+
+/** 推理型模型可能在 JSON 中途被 max_tokens 截断：扫描状态修补未闭合的字符串/括号 */
+function repairTruncatedJson(text: string): string {
+  let inString = false;
+  let escaped = false;
+  let lastStringStart = -1;
+  let curly = 0;
+  let square = 0;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      if (inString) lastStringStart = i;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') curly += 1;
+    else if (ch === '}') curly -= 1;
+    else if (ch === '[') square += 1;
+    else if (ch === ']') square -= 1;
+  }
+
+  let out = text;
+  if (inString && lastStringStart >= 0) out = `${out.slice(0, lastStringStart)}"`;
+  out = out.replace(/[,:\s]+$/, '');
+  out += ']'.repeat(Math.max(0, square));
+  out += '}'.repeat(Math.max(0, curly));
+  return out;
+}
+
+export function parseJsonLoose<T>(text: string): T | null {
+  const cleaned = stripCodeFence(text);
   try {
     return JSON.parse(cleaned) as T;
   } catch {
-    // 退一步：抓取第一个 JSON 对象
+    // 继续尝试修复
   }
+
   const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start >= 0 && end > start) {
+  if (start < 0) return null;
+  const candidate = cleaned.slice(start);
+
+  const end = candidate.lastIndexOf('}');
+  if (end > 0) {
     try {
-      return JSON.parse(cleaned.slice(start, end + 1)) as T;
+      return JSON.parse(candidate.slice(0, end + 1)) as T;
     } catch {
-      return null;
+      // 继续尝试修补
     }
   }
-  return null;
+
+  const repaired = repairTruncatedJson(candidate);
+  try {
+    return JSON.parse(repaired) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** 内容审核拒答识别：没有 JSON 结构且带拒绝语气的文本 */
+export function looksLikeRefusal(text: string): boolean {
+  if (text.includes('{')) return false;
+  return /(无法|不能|抱歉|拒绝|不合规|超出|不便|cannot|can'?t|sorry|unable)/i.test(text);
 }
 
 export function buildTextPrompt(input: {
@@ -95,8 +154,8 @@ export function buildTextPrompt(input: {
 
 export function buildVisionPrompt(): string {
   return [
-    '这是一条媒体（视频或图片）的缩略图。',
-    '只输出 JSON 对象，字段：',
+    '这是一条媒体（视频或图片）的缩略图，用于个人媒体库归档索引。',
+    '只输出 JSON 对象，字段保持简短（description 一句话、每项标签不超过 10 个字，总输出不超过 200 字）：',
     '{"description": 一句话中文画面描述, "themes": [主题标签数组], "mood": [氛围词数组]}',
   ].join('\n');
 }
@@ -214,6 +273,7 @@ export async function enrichMedia(
       }
     }
 
+    let visionUnusable = false;
     if (expectVision && thumbPath) {
       try {
         const response = await gateway.runVision(
@@ -222,7 +282,7 @@ export async function enrichMedia(
             images: [{ type: 'image', image: { kind: 'path', path: thumbPath } }],
             jsonMode: true,
             temperature: 0.3,
-            maxTokens: 2_048,
+            maxTokens: 4_096,
           },
           { runId, label: 'enrich.vision' },
         );
@@ -239,6 +299,20 @@ export async function enrichMedia(
               : undefined,
           };
           visionOk = true;
+        } else if (!response.text.includes('{')) {
+          // 完全没有 JSON 结构：多为内容审核拒答或说明性文字，不计为失败（不触发重试）
+          visionUnusable = true;
+          gateway.recordStep(runId, {
+            type: 'decision',
+            toolName: 'vision.unusable',
+            output: {
+              note: looksLikeRefusal(response.text || response.reasoning || '')
+                ? '视觉模型基于内容审核拒答（未返回 JSON），已跳过；可换用其他视觉模型'
+                : '视觉模型未按 JSON 格式返回，已跳过',
+              excerpt: (response.text || '').slice(0, 200),
+            },
+            status: 'succeeded',
+          });
         } else {
           errors.push('视觉富化返回无法解析为 JSON');
         }
@@ -247,9 +321,16 @@ export async function enrichMedia(
       }
     }
 
-    const expected = (expectChat ? 1 : 0) + (expectVision ? 1 : 0);
-    const succeeded = (chatOk ? 1 : 0) + (visionOk ? 1 : 0);
-    outcomeStatus = succeeded === 0 ? 'failed' : succeeded === expected ? 'done' : 'partial';
+    const expectCount = (expectChat ? 1 : 0) + (expectVision && !visionUnusable ? 1 : 0);
+    const succeededCount = (chatOk ? 1 : 0) + (visionOk ? 1 : 0);
+    outcomeStatus =
+      succeededCount === 0
+        ? expectCount === 0
+          ? 'skipped'
+          : 'failed'
+        : succeededCount === expectCount
+          ? 'done'
+          : 'partial';
     if (outcomeStatus === 'failed') {
       throw new Error(errors.join('；') || 'AI 富化失败');
     }
