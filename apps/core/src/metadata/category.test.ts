@@ -85,9 +85,16 @@ describe('deriveRuleCategory', () => {
     expect(deriveRuleCategory({ type: 'video', season: null, mediaGroupId: null }).category).toBe('other');
   });
 
-  it('成人关键词标签 → 建议敏感', () => {
-    expect(deriveRuleCategory({ type: 'video', season: null, mediaGroupId: null, tags: ['成人向'] }).sensitive).toBe(true);
-    expect(deriveRuleCategory({ type: 'video', season: null, mediaGroupId: null, tags: ['cosplay'] }).sensitive).toBe(false);
+  it('成人关键词标签 → adult + 敏感（U4：敏感内容单独归类）', () => {
+    const adult = deriveRuleCategory({ type: 'video', season: null, mediaGroupId: null, tags: ['成人向'] });
+    expect(adult).toEqual({ category: 'adult', sensitive: true });
+
+    // 成人优先于图片/季集规则：敏感照片进 adult 夹而不是 gallery
+    expect(deriveRuleCategory({ type: 'photo', season: null, mediaGroupId: null, tags: ['露骨色情'] }).category).toBe('adult');
+    expect(deriveRuleCategory({ type: 'video', season: 3, mediaGroupId: null, tags: ['nsfw'] }).category).toBe('adult');
+
+    const normal = deriveRuleCategory({ type: 'video', season: null, mediaGroupId: null, tags: ['cosplay'] });
+    expect(normal).toEqual({ category: 'other', sensitive: false });
     expect(looksAdult('R18 写真')).toBe(true);
     expect(looksAdult('风景')).toBe(false);
   });
@@ -153,9 +160,36 @@ describe('applyDerivedCategory（优先级 user > llm > rule）', () => {
     const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, r.assetId)).get()!;
     expect(asset.isSensitive).toBe(true);
   });
+
+  it('AI 判为 adult → 分类与敏感必须一致（真实缺陷 #21）', () => {
+    const ctx = createTestContext();
+    const r = ingestMessage(ctx, PLAIN_VIDEO);
+    const res = applyDerivedCategory(ctx, r.assetId, 'adult');
+    expect(res.category).toBe('adult');
+    expect(res.categorySource).toBe('llm');
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, r.assetId)).get()!;
+    expect(asset.isSensitive).toBe(true);
+  });
+
+  it('用户显式取消敏感后，规则不把它改回来', () => {
+    const ctx = createTestContext();
+    const r = ingestMessage(ctx, PLAIN_VIDEO);
+    ctx.db
+      .insert(mediaTag)
+      .values({ mediaAssetId: r.assetId, tag: '成人向', source: 'llm' })
+      .run();
+    ctx.db
+      .update(mediaAsset)
+      .set({ category: 'other', categorySource: 'user', isSensitive: false })
+      .where(eq(mediaAsset.id, r.assetId))
+      .run();
+    const res = applyDerivedCategory(ctx, r.assetId, 'adult');
+    expect(res.category).toBe('other');
+    expect(res.sensitive).toBe(false);
+  });
 });
 
-describe('backfillRuleCategory（reindex 回填：只补空缺）', () => {
+describe('backfillRuleCategory（reindex 回填：可改写 rule，不动 llm/user）', () => {
   it('填空缺，但不覆盖 llm/user', () => {
     const ctx = createTestContext();
     const r = ingestMessage(ctx, PHOTO);
@@ -168,5 +202,40 @@ describe('backfillRuleCategory（reindex 回填：只补空缺）', () => {
     ctx.db.update(mediaAsset).set({ category: 'movie', categorySource: 'llm' }).where(eq(mediaAsset.id, r.assetId)).run();
     expect(backfillRuleCategory(ctx, r.assetId)).toBe(false);
     expect(ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, r.assetId)).get()!.category).toBe('movie');
+  });
+
+  it('llm 分类不被覆盖，但敏感一致性仍会修正（缺陷 #21）', () => {
+    const ctx = createTestContext();
+    const r = ingestMessage(ctx, PLAIN_VIDEO);
+    ctx.db
+      .update(mediaAsset)
+      .set({ category: 'adult', categorySource: 'llm', isSensitive: false })
+      .where(eq(mediaAsset.id, r.assetId))
+      .run();
+
+    expect(backfillRuleCategory(ctx, r.assetId)).toBe(true);
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, r.assetId)).get()!;
+    expect(asset.category).toBe('adult'); // 分类保持 llm 判定，未被规则改写
+    expect(asset.categorySource).toBe('llm');
+    expect(asset.isSensitive).toBe(true); // 敏感被补齐
+  });
+
+  it('规则可以修正规则：成人内容从 gallery 收敛到 adult', () => {
+    const ctx = createTestContext();
+    const r = ingestMessage(ctx, PHOTO);
+    ctx.db
+      .update(mediaAsset)
+      .set({ category: 'gallery', categorySource: 'rule' })
+      .where(eq(mediaAsset.id, r.assetId))
+      .run();
+    ctx.db
+      .insert(mediaTag)
+      .values({ mediaAssetId: r.assetId, tag: '成人内容', source: 'llm' })
+      .run();
+
+    expect(backfillRuleCategory(ctx, r.assetId)).toBe(true);
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, r.assetId)).get()!;
+    expect(asset.category).toBe('adult');
+    expect(asset.isSensitive).toBe(true);
   });
 });

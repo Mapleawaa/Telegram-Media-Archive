@@ -20,7 +20,8 @@ export const CATEGORY_SOURCES = ['rule', 'llm', 'user'] as const;
 export const EXTRACTED_BY = ['rule', 'llm', 'vision', 'mixed'] as const;
 export const EMBEDDING_KINDS = ['text', 'image'] as const;
 export const JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead'] as const;
-export const RUN_KINDS = ['enrich', 'embedding', 'agent', 'search', 'rerank'] as const;
+// 'consolidate'：P3-2 标签压缩作业（只喂标签列表、不读内容）
+export const RUN_KINDS = ['enrich', 'embedding', 'agent', 'search', 'rerank', 'consolidate'] as const;
 export const RUN_STATUSES = ['running', 'succeeded', 'failed', 'cancelled'] as const;
 export const STEP_TYPES = [
   'intent',

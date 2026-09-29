@@ -62,7 +62,7 @@ export async function consolidateTags(
 
   const tags = [...new Set(rows.map((r) => r.tag))];
 
-  const plan = await gateway.withRun('rerank', `标签压缩媒体 #${assetId}`, async (runId) => {
+  const plan = await gateway.withRun('consolidate', `标签压缩媒体 #${assetId}`, async (runId) => {
     const response = await gateway.runChat(
       {
         messages: [
@@ -75,7 +75,21 @@ export async function consolidateTags(
       },
       { runId, label: 'tags.consolidate' },
     );
-    return parseJsonLoose<ConsolidatePlan>(response.text);
+    const parsed = parseJsonLoose<ConsolidatePlan>(response.text);
+    if (!parsed) {
+      // 重要：不能让「模型输出不可解析」变成静默无操作（真机 25 条里有 9 条如此）。
+      // 记一条 decision，AI 活动页/Run 详情能查到原因。
+      gateway.recordStep(runId, {
+        type: 'decision',
+        toolName: 'tags.consolidate.unusable',
+        output: {
+          note: '模型未返回可解析 JSON，本次不改动标签（原标签保留）',
+          excerpt: response.text.slice(0, 200),
+        },
+        status: 'succeeded',
+      });
+    }
+    return parsed;
   });
 
   if (!plan) return empty;

@@ -55,11 +55,12 @@
 
 | # | 任务 | 细节 | 验收 |
 |---|---|---|---|
-| P3-1 | **G5 分类体系** | `src/metadata/category.ts`：规则（季集→series / 图片→gallery / 兜底 other / 成人标签→敏感）+ AI prompt 的 `category` 落库（llm）+ 人工优先（user 不可覆盖）；`reindex-search` 增分类回填 | ✅ 真实库 25/25 有分类（gallery 13 / other 12，不调模型）；单测 13 例 |
-| P3-2 | **G6 标签压缩作业** | `src/ai/consolidate.ts`：只输入标签 → `{keep,drop,merge,category}` → 应用 + audit；`POST /api/admin/consolidate-tags` 批量；设置页入口 | ✅ 单测 5 例（含 **user 标签不可 drop/merge**、非 JSON 容错）；smoke 断言通过 |
+| P3-1 | **G5 分类体系** | `src/metadata/category.ts`：规则（**成人优先→adult** / 季集→series / 图片→gallery / 兜底 other）+ AI prompt 的 `category` 落库（llm）+ 人工优先（user 不可覆盖）；`reindex-search` 增分类回填与 `adult⇒敏感` 不变量修正 | ✅ 真实库 25/25 有分类（adult 10 / gallery 6 / other 9，不调模型）；单测 17 例 |
+| P3-2 | **G6 标签压缩作业** | `src/ai/consolidate.ts`：只输入标签 → `{keep,drop,merge,category}` → 应用 + audit；`RUN_KINDS` 新增 `consolidate`；`POST /api/admin/consolidate-tags` 批量；设置页入口 | ✅ 单测 5 例（含 **user 标签不可 drop/merge**、非 JSON 容错）；smoke 断言通过 |
 | P3-3 | **B5 相册聚簇** | 列表暴露 `mediaGroupId`/`albumCount`；shared 纯函数 `clusterByAlbum` 做稳定相邻聚簇；卡片渲染相册角标 | ✅ 实拍：两张相册图显示「2」角标；单测 5 + 5 例 |
 | P3-4 | **B8 排序** | `sort=recent\|updated\|size\|duration\|year`（keyset 仅 recent） | ✅ 实拍：`sort=size` 时 57.1 GB 条排最前 |
 | P3-5 | 分类浏览 API | `GET /api/library/sections`（六类 + 自定义 + 未分类，各带计数与预览图）供 P4 影音墙 | ✅ 演示库 series 3 / anime 1 / gallery 2 / other 6 |
+| — | 回归 | ✅ 单测 95→**127**（16 文件）+ 冒烟 30→**41/41** + 浏览器实机 9/9 |
 
 ## P4 — Desktop UI 重设计（影音墙）
 

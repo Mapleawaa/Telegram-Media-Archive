@@ -18,13 +18,18 @@ function msg(partial: Partial<IncomingMessage> & { media: IncomingMessage['media
   };
 }
 
-/** 只实现 consolidateTags 用到的最小面：chatEnabled / withRun / runChat */
-function stubGateway(reply: unknown): AiGateway {
+/** 只实现 consolidateTags 用到的最小面：chatEnabled / withRun / runChat / recordStep */
+function stubGateway(reply: unknown): AiGateway & { steps: { toolName?: string }[] } {
+  const steps: { toolName?: string }[] = [];
   return {
+    steps,
     chatEnabled: true,
     withRun: async <T>(_kind: string, _req: string | undefined, fn: (id: number) => Promise<T>) => fn(1),
     runChat: async () => ({ text: typeof reply === 'string' ? reply : JSON.stringify(reply) }),
-  } as unknown as AiGateway;
+    recordStep: (_runId: number, step: { toolName?: string }) => {
+      steps.push(step);
+    },
+  } as unknown as AiGateway & { steps: { toolName?: string }[] };
 }
 
 function seedAsset(ctx: ReturnType<typeof createTestContext>) {
@@ -109,7 +114,7 @@ describe('consolidateTags', () => {
     });
   });
 
-  it('模型返回非 JSON → 不改动任何标签', () => {
+  it('模型返回非 JSON → 不改动任何标签，但留下可追溯的 decision 步骤', () => {
     const ctx = createTestContext();
     const id = seedAsset(ctx);
     const before = tagsOf(ctx, id);
@@ -117,6 +122,8 @@ describe('consolidateTags', () => {
     return consolidateTags(ctx, gateway, id).then((res) => {
       expect(tagsOf(ctx, id)).toEqual(before);
       expect(res.dropped).toEqual([]);
+      // 关键：不能静默 no-op —— 真机曾有 9/25 条这样「跑完等于没跑」且无痕迹
+      expect(gateway.steps.map((s) => s.toolName)).toContain('tags.consolidate.unusable');
     });
   });
 

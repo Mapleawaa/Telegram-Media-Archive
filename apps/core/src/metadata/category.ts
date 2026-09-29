@@ -149,6 +149,11 @@ export function deriveRuleCategory(input: RuleCategoryInput): RuleCategoryResult
   const tags = input.tags ?? [];
   const sensitive = tags.some((t) => looksAdult(t));
 
+  // 成人优先：U4 要求敏感内容**单独归类**，所以命中成人关键词时不再落 gallery/other，
+  // 直接进 adult 夹（同时置敏感）。这是「代码算得出」的判定，不需要模型。
+  if (sensitive) {
+    return { category: 'adult', sensitive: true };
+  }
   if (input.type === 'photo') {
     return { category: 'gallery', sensitive };
   }
@@ -232,7 +237,11 @@ export function applyDerivedCategory(
     patch.category = nextCategory;
     patch.categorySource = nextSource;
   }
-  const nextSensitive = rule.sensitive ? true : asset.isSensitive;
+  // 敏感判定：规则命中成人关键词，或最终分类就是 adult（分类与敏感必须一致，
+  // 否则会出现「归到成人类却不算敏感」——U4 要求敏感内容正经处理）。
+  // 走 user 来源的在这一分支之前已 return，用户显式取消敏感的决定依然有效。
+  const effectiveCategory = nextCategory ?? asset.category;
+  const nextSensitive = rule.sensitive || effectiveCategory === 'adult' ? true : asset.isSensitive;
   if (nextSensitive !== asset.isSensitive) patch.isSensitive = nextSensitive;
 
   ctx.db.update(mediaAsset).set(patch).where(eq(mediaAsset.id, assetId)).run();
@@ -244,13 +253,26 @@ export function applyDerivedCategory(
   };
 }
 
-/** 强制设置分类（供 reindex 回填：只填空的，不覆盖 llm/user） */
+/**
+ * 规则回填（供 reindex）：
+ *   - 只写 `null` 或 `rule` 来源的分类 —— **不覆盖 llm / user**；
+ *   - 规则可以修正规则（例如规则升级后把人内容从 gallery 改判为 adult，让分类收敛）。
+ */
 export function backfillRuleCategory(ctx: AppContext, assetId: number): boolean {
   const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, assetId)).get();
-  if (!asset || asset.categorySource === 'user' || asset.categorySource === 'llm') return false;
+  // user 已接管 → 分类与敏感都尊重人工决定，一律不动
+  if (!asset || asset.categorySource === 'user') return false;
+
   const rule = deriveRuleCategory(readRuleInput(ctx, assetId));
-  const setCategory = !asset.category && Boolean(rule.category);
-  const setSensitive = rule.sensitive && !asset.isSensitive;
+  const llmLocked = asset.categorySource === 'llm';
+  const canWriteCategory = !llmLocked && (asset.category === null || asset.categorySource === 'rule');
+  const setCategory = canWriteCategory && Boolean(rule.category) && rule.category !== asset.category;
+
+  // 敏感一致性：分类是 adult 就必须敏感。这是**字段自洽**（不是改分类），
+  // 因此对 llm 来源的分类同样生效（真实缺陷 #21：adult/llm 却 is_sensitive=0）。
+  const effectiveCategory = setCategory ? rule.category : asset.category;
+  const setSensitive = !asset.isSensitive && (rule.sensitive || effectiveCategory === 'adult');
+
   if (!setCategory && !setSensitive) return false;
   ctx.db
     .update(mediaAsset)
