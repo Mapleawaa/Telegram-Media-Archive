@@ -1,16 +1,16 @@
 # 接手文档 — 地基整固 P2 → P5（下一个 Agent 从这开始）
 
 > 面向：接手本项目的下一个 Agent。本文是**任务书 + 上手指南**，读完即可开工。
-> 现状：P1（地基快修）已完成（提交 `12cfb94`）；本文档覆盖 P2 / P3 / P4 / P5。
-> 文档真源：`docs/architecture.md`（需求基线）· `docs/roadmap.md`（里程碑）· `docs/fix-plan.md`（本批计划）· `docs/known-issues.md`（问题清单，含用户反馈 U1-U6）。**动手前先读这四份 + 本文档。**
+> 现状（2026-09-29）：**P1 ✅ → P2 ✅ → P3 ✅ → P4 待开工**。本文档覆盖 P2 / P3 / P4 / P5，其中 §5（P2）与 §6（P3）**均已完成**，收口见 `P2-ai-routing.md` / `P3-categories-tags.md`；**下一步做 §7（P4）**。
+> 文档真源：`docs/architecture.md`（需求基线）· `docs/roadmap.md`（里程碑）· `docs/fix-plan.md`（本批计划）· `docs/known-issues.md`（问题清单，含用户反馈 U1-U6）。**动手前先读这四份 + 本文档 + `CLAUDE.md`。**
 
 ---
 
 ## 0. 30 秒速览
 
 - **项目**：AI 媒体归档整理器。Telegram 存原始媒体（事实源），本地 `apps/core`（TS/Node/Fastify/SQLite）存派生数据，`apps/desktop`（Tauri + React）是工作台。
-- **已完成**：归档链路（M1）、AI 富化（M3，DeepSeek 文本+视觉）、向量检索（M4，混合检索 RRF）、P1 地基快修。
-- **你要做**：P2（AI 介入分流器，用户核心诉求）→ P3（分类体系+标签智能）→ P4（Desktop UI 重设计）→ P5（细节与运维）。
+- **已完成**：归档链路（M1）、AI 富化（M3，DeepSeek 文本+视觉）、向量检索（M4，混合检索 RRF）、P1 地基快修、**P2 AI 介入分流器**、**P3 分类体系 + 标签智能**。
+- **你要做**：**P4（Desktop UI 重设计，必须用户实机审阅）** → P5（细节与运维收口）。P2 / P3 的任务书（§5 / §6）保留作为历史记录，**已完成，不要重复实施**。
 - **C 类全部暂缓**（MTProto/Agent/Trace/打包/批量/真实 embedding/自动重试），用户明确裁定「先修地基」。
 
 ---
@@ -113,7 +113,7 @@ taskkill //PID <pid> //F
 
 ---
 
-## 5. P2 — AI 介入分流器（**下一个开工项**）
+## 5. P2 — AI 介入分流器（✅ 已完成，收口见 `docs/handoff/P2-ai-routing.md`）
 
 **用户原话要点**（`known-issues.md` U1）：AI 是外部 API 有内容审核，敏感收藏必然被拒答。方案：**按来源群配置白/黑名单**，命中黑名单的内容**不进模型**，直接进人工分类流程；附言里的标签自动预填。示例：「转发一份日本的学习资料，Bot 发现来源群在黑名单里，就不走 AI，直接进入分类界面让用户自己归类」。
 
@@ -138,7 +138,7 @@ taskkill //PID <pid> //F
 
 ---
 
-## 6. P3 — 分类体系 + 标签智能
+## 6. P3 — 分类体系 + 标签智能（✅ 已完成，收口见 `docs/handoff/P3-categories-tags.md`）
 
 | # | 任务 | 实现要点 |
 |---|---|---|
@@ -152,7 +152,10 @@ taskkill //PID <pid> //F
 
 ---
 
-## 7. P4 — Desktop UI 重设计（**必须用户实机审阅后迭代**）
+## 7. P4 — Desktop UI 重设计（**下一个开工项**；必须用户实机审阅后迭代）
+
+> 数据入口已就绪（P3 提供）：`GET /api/library/sections`（分类夹 + 计数 + 预览图）、
+> `MediaListItem.category / isSensitive / albumCount / mediaGroupId`。
 
 **用户原话**：「UI 太像后端了，太像 shadcn 的设计语言，不适合一个中台应用。建议把整个 UI 和交互逻辑设计成真正适合桌面客户端体验的 UI」；对标 **Jellyfin / Emby / Apple TV** 的影视库浏览逻辑；**深色优先**（已确认）。
 

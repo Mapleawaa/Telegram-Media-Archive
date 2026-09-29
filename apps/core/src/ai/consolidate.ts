@@ -11,7 +11,7 @@
  *
  * 审计：事件 `media.tags_consolidated` 落库，保留 keep/drop/merge 原样以便追溯。
  */
-import type { ConsolidateTagsResult, CategorySource } from '@tma/shared';
+import type { ConsolidateTagsResult } from '@tma/shared';
 import { eq } from 'drizzle-orm';
 import type { AppContext } from '../context.js';
 import { mediaAsset, mediaTag } from '../database/schema.js';

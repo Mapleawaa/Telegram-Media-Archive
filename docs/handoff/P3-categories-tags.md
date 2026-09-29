@@ -66,13 +66,13 @@ apps/core typecheck: Done
 
 $ pnpm -F @tma/core test
  ✓ src/metadata/category.test.ts (17 tests)
- ✓ src/ai/consolidate.test.ts (5 tests)
+ ✓ src/ai/consolidate.test.ts (6 tests)
  ✓ src/media/queries-p3.test.ts (5 tests)
  ✓ src/media/album-cluster.test.ts (5 tests)
  ✓ src/ai/enrich.test.ts (9)  ✓ src/ingestion/ingest.test.ts (10)
  …（共 16 文件）
  Test Files  16 passed (16)
-      Tests  127 passed (127)          # P2 基线 95 → 127（+32）
+      Tests  128 passed (128)          # P2 基线 95 → 128（+33）
 
 $ pnpm -F @tma/core smoke
   ✓ P3-1 ingest 规则分类：季集视频 → series（rule）
@@ -91,17 +91,19 @@ $ pnpm -F @tma/core smoke
 
 ### 2.1 真实库回填（8787，纯派生数据，**不调模型**）
 
+> ⚠ 本节是**首轮（只有规则层）的中间态**，不是终态。终态见 §2.3（标签压缩跑完后 AI 又改判了一批分类）。
+
 ```bash
-$ curl -s -X POST localhost:8787/api/admin/reindex-search
+$ curl -s -X POST localhost:8787/api/admin/reindex-search      # 首轮，P3 代码刚落地时
 {"ok":true,"count":25,"tagsAdded":4,"tagsRemoved":4,"titlesCleared":0,
  "titlesCleaned":0,"titlesRederived":0,"categoriesFilled":1,"tookMs":72}
 
 $ curl -s localhost:8787/api/library/sections
 total: 25
-  movie 0 · series 0 · anime 0 · adult 10 · gallery 6 · other 9      # 25/25 全部分类
+  movie 0 · series 0 · anime 0 · adult 10 · gallery 6 · other 9      # 首轮中间态
 ```
 
-分布复核（`better-sqlite3` 只读）：
+首轮分布复核（`better-sqlite3` 只读）：
 
 ```
 adult 10 · gallery 6 · other 9 ；is_sensitive=1：10 条
@@ -146,9 +148,10 @@ total: 12
 
 ```
 标签总数 200（P1 治理前 349） → 163（P1+P3 过滤） → 122（压缩后）
-每条均值 6.00 → 5.28 → 4.88 ；上限恒为 8
+每条均值 6.00 → 5.28 → 4.88 ；上限恒为 8 ；来源分布 llm 70 / rule 35 / vision 17（user 0）
 分类：adult 12 · gallery 7 · other 5 · anime 1   （25/25 有分类）
-is_sensitive=1：12 条，与 adult 分类完全一致（不变量 0 违例）
+is_sensitive=1：13 条 = 12 条（与 `adult` 一致）+ 1 条 `#2`（AI 判 gallery，但标签含「性行为/成人向」，保守置敏感）
+不变量 `adult ⇒ is_sensitive`：0 违例
 tags.consolidate 作业：100 个全部 succeeded，dead=0
 ```
 
@@ -191,14 +194,14 @@ $ # 约 25s 后（含失败重试）
 - [x] **P3-1 AI category 落库**：`buildTextPrompt` 的 `category` 字段改为六类口径（原来是 `video|photo|…` 类型枚举，重复且无用）；`applyEnrichment` 接线落库（source='llm'）。
 - [x] **P3-1 人工优先覆盖**：`categorySource='user'` 后规则与 AI 都不再改动（含 `is_sensitive`，单测覆盖）。
 - [x] **P3-1 敏感一致性**：不变量 `adult ⇒ is_sensitive=1`；`reindex` 修正历史违例（真实缺陷 #21 已修）。
-- [x] **P3-2 标签压缩作业**：`src/ai/consolidate.ts`（只喂标签列表 → `{keep,drop,merge,category}` → 应用）；worker 注册 `tags.consolidate`；`RUN_KINDS` 新增专属 `consolidate`；批量入口 `POST /api/admin/consolidate-tags`；audit 事件 `media.tags_consolidated`；**user 标签不可被 drop/merge**（单测 5 例覆盖含「模型返回非 JSON」「chat 未启用」）。
+- [x] **P3-2 标签压缩作业**：`src/ai/consolidate.ts`（只喂标签列表 → `{keep,drop,merge,category}` → 应用）；worker 注册 `tags.consolidate`；`RUN_KINDS` 新增专属 `consolidate`；批量入口 `POST /api/admin/consolidate-tags`；audit 事件 `media.tags_consolidated`；**user 标签不可被 drop/merge**（单测 6 例覆盖含「模型返回非 JSON 必须抛错且留痕」「chat 未启用」）。
 - [x] **P3-3 相册与排序**：列表暴露 `mediaGroupId`/`albumCount`（1 = 非相册）；shared 纯函数 `clusterByAlbum` 稳定聚簇，LibraryPage 消费；卡片相册角标；`sort=recent|updated|size|duration|year`（keyset 仅 recent）+ Library 页排序下拉。
 - [x] **P3-5 分类夹 API**：`GET /api/library/sections` → 六类预设恒定出现 + 自定义分类 + 未分类，各带计数与预览图（12 条）。
 - [x] **敏感标记**：`is_sensitive` 由人工分类（P2）与成人关键词/成人分类（P3）赋值，且与 `category='adult'` 保持一致。
-- [x] **单测**：**128 例全绿**（新增 category 18 + consolidate 6 + queries-p3 5 + album-cluster 5）。
+- [x] **单测**：**128 例全绿**（新增 category 17 + consolidate 6 + queries-p3 5 + album-cluster 5 = 33）。
 - [x] **smoke**：41/41（新增 11 项 P3 断言）。
 - [x] **UI 实机**：浏览器（Chrome）连演示 core 实际点过并截图（上表，9/9）。
-- [x] **真实库回填**：25/25 有分类（终态 adult 12 / gallery 7 / other 5 / anime 1）；`is_sensitive=1` 12 条，不变量复核 0 违例。
+- [x] **真实库回填**：25/25 有分类（终态 adult 12 / gallery 7 / other 5 / anime 1）；`is_sensitive=1` 13 条；不变量 `adult ⇒ 敏感` 0 违例。
 - [x] **标签压缩真机收敛**：25/25 覆盖、100 个作业 0 dead、均值降到 4.88（§2.3）。
 - [x] **文档**：本文件 + `known-issues.md` / `fix-plan.md` / `CLAUDE.md` 状态更新。
 
@@ -222,7 +225,8 @@ $ # 约 25s 后（含失败重试）
 
 1. ~~**真实库 9 条 video 落 `other`**~~ → **已由标签压缩顺带修掉**：压缩作业会返回 `category`，
    跑完 4 轮后 `other` 从 12 条降到 5 条（其余被模型判为 adult/anime），**没有走「重新富化」这条贵路径**。
-2. **`is_sensitive` 自动标了 10 条**（成人关键词标签 / `adult` 分类命中）。若用户认为过度，可调 `ADULT_KEYWORDS` 或改由人工确认——见 `known-issues.md` E1。
+2. **`is_sensitive` 自动标了 13 条**（成人关键词标签 / `adult` 分类命中；其中 1 条 AI 判 gallery 但含成人标签，保守置敏感）。
+   若用户认为过度，可调 `ADULT_KEYWORDS` 或改由人工确认——见 `known-issues.md` E1。
 3. **标签压缩的 `keep` 语义**：`keep` 仅表示「不删不并」，不作为白名单（模型没提到的标签也不会被删——删除只由 `drop` 驱动）。这样更保守，避免模型漏提导致误删。
 4. **相册聚簇只作用于「已加载的这一页」**：`clusterByAlbum` 在内存里对已取回的条目重排，**跨页的相册不会被拼回一起**（数据量大时要按 group 查询而非分页）。P4 影音墙如需整组展示，应按 `mediaGroupId` 单独查询。
 5. **相册未做独立分组框**：只有角标 + 相邻渲染（P4 会重做展示）。
@@ -233,16 +237,17 @@ $ # 约 25s 后（含失败重试）
    若模型某天更啰嗦，重试 3 次仍失败会留 `dead` 作业（可见、可手动重试）+ `tags.consolidate.unusable` 步骤。
 9. **历史 run 的 kind 是 `rerank`**：改名前的 25 次压缩记在 `rerank` 下（保留审计原样，不重跑）。
 
-### 备注：本阶段存在并行写入（已并入）
+### 备注：本阶段曾有两个写入者并行（已合流，后续已停止）
 
-本阶段工作期间，同一工作区**另有写入者**（上下文被压缩/重启后的同一接手工程师）产出/改写了以下内容，
-均已并入 P3 三轮提交（**自洽、全绿**）：
+本阶段工作期间，工作区**同时有第二个 Agent 在跑同一个 P3 范围**（用户确认后已停止）。
+两侧产物自洽且全绿，已全部并入库，无需返工。第二个写入者贡献的内容：
 - `packages/shared/src/album.ts`（`clusterByAlbum`/`albumSize`）、`apps/core/src/media/album-cluster.test.ts`、`apps/core/src/media/queries-p3.test.ts`
 - `LibraryPage.tsx` 的聚簇调用、`smoke.mts` 的部分 P3 断言（含新增的「非相册 albumCount=1」）
 - `category.ts` 的**成人优先**规则与 `adult ⇒ 敏感` 不变量修正（及其单测）、`RUN_KINDS` 新增 `consolidate`
-- `consolidate.ts` 的 `maxTokens` 4096 + 「不可解析即抛错重试」
+- `consolidate.ts` 的 `maxTokens` 4096 + 「不可解析即抛错重试」，以及真机 25 条压缩跑批与数据回填
 
-提交序列：`30a3804`（P3 主体）→ `2cf11b3`（成人优先 + 敏感不变量 + 失败可追溯）→ `a15ea5c`（maxTokens）。
+提交序列：`30a3804`（P3 主体）→ `2cf11b3`（成人优先 + 敏感不变量 + 失败可追溯）→
+`a15ea5c`（maxTokens 800→2048）→ `35d95f7`（提到 4096 + 抛错重试 + 真机数据回填）。
 **接手前请以工作区实际内容为准。**
 
 ### 下一入口

@@ -18,7 +18,7 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
-真机库 25 条媒体（分类已全量回填：adult 10 / gallery 6 / other 9；`is_sensitive` 10 条）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
+真机库 25 条媒体（分类已全量回填：adult 12 / gallery 7 / other 5 / anime 1；`is_sensitive` 13 条；标签 122 条、均值 4.88）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
 ## 目录结构
 
@@ -100,7 +100,7 @@ telegram-media-archive/
 eval "$(fnm env --shell bash)"        # 每个新 shell 必须（fnm 管 Node 24.21 / pnpm 12.6）
 
 pnpm -r typecheck                      # 三包类型检查
-pnpm -F @tma/core test                 # 单测（127 个）
+pnpm -F @tma/core test                 # 单测（128 个）
 pnpm -F @tma/core smoke                # 端到端冒烟（41 项断言）★改完必跑
 pnpm -F @tma/core dev                  # 真实 core（8787）
 pnpm -F @tma/desktop tauri dev         # 桌面端（自动拉起 Vite 5173）

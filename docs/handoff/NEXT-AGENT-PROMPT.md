@@ -1,5 +1,9 @@
 # 交接提示词（复制下面代码块全文，作为下一个 Agent 的第一条消息）
 
+> ⚠️ **本提示词写于 P2 开工前，已过时**。当前状态：**P1 ✅ / P2 ✅ / P3 ✅ / P4 待开工**。
+> 若要现在交接，请以 `CLAUDE.md` + `docs/handoff/NEXT-P2-P5-handoff.md` **§7（P4）** 为准，
+> 或直接复制 `docs/handoff/RESUME-PROMPT.md` 的最新版本。下面代码块仅作历史存档。
+
 > 用法：把下面 ```text 代码块里的内容整段发给接手的新 Agent（新会话/新模型均可）。
 > 前提：新 Agent 的工作目录是 `C:\Users\Maple\Documents\项目\Telegram Media Archive`（项目记忆会自动加载，若没有则按提示词里的文档路径自行阅读）。
 
