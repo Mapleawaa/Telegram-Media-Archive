@@ -14,10 +14,11 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅（2026-09-29）→ P3（下一步）** → P4 → P5。
+功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅ → P3 ✅（2026-09-29）→ P4（下一步）** → P5。
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
+P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
-真机库 23 条媒体；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
+真机库 25 条媒体（分类已全量回填：gallery 13 / other 12）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
 ## 目录结构
 
@@ -28,10 +29,11 @@ telegram-media-archive/
 │  │  ├─ .env / .env.example       # 配置（.env 不入库）：TG token、群 ID、代理、AI 三能力模型
 │  │  ├─ drizzle/                  # SQL 迁移（0000 建表 / 0001 FTS5 自定义）
 │  │  ├─ scripts/
-│  │  │  ├─ smoke.mts              # 端到端冒烟（临时库+mock AI+Fastify inject，21 项断言）★改完必跑
+│  │  │  ├─ smoke.mts              # 端到端冒烟（临时库+mock AI+Fastify inject，41 项断言）★改完必跑
 │  │  │  ├─ seed-demo.mts          # 演示库（.data-demo，8788 端口用）
 │  │  │  ├─ ai-probe.mts           # 拉取服务商模型列表 → docs/handoff/ai-models.md
 │  │  │  ├─ ai-check.mts           # 模型连通性检测
+│  │  │  ├─ purge-ai.mts           # 清退媒体的 AI 产物 → 退回「待分类」（存量补救）
 │  │  │  └─ export-user-data.mts   # 导出不可重建的用户数据（标签/注解/设置）
 │  │  └─ src/
 │  │     ├─ index.ts               # 启动编排：db→bus→queue→worker→tg→server；作业注册在这
@@ -41,12 +43,14 @@ telegram-media-archive/
 │  │     ├─ database/              # schema.ts（12 表）/ client.ts（WAL+迁移）/ test-utils.ts
 │  │     ├─ telegram/              # client.ts（TelegramClient 接口）/ types.ts（IncomingMessage）
 │  │     │  └─ bot/                # bot-client.ts（grammY+代理）/ extract.ts（消息→媒体）/ thumbnail.ts
-│  │     ├─ ingestion/ingest.ts    # 幂等入库事务（去重→资产→消息→标签→入队→事件）
+│  │     ├─ ingestion/ingest.ts    # 幂等入库事务（去重→资产→消息→标签→分类→入队→事件）
 │  │     ├─ metadata/              # rule-parser（文件名解析）/ dedupe / title-policy / tag-policy
+│  │     │                          # / category.ts（P3 分类：规则+优先级 user>llm>rule）
 │  │     │                          # / rebuild-search-doc（搜索文档+FTS 同步）
 │  │     ├─ ai/                    # types（Provider 接口）/ openai-compatible / mock
 │  │     │                          # / gateway.ts（三能力路由+ai_runs/ai_steps 记账）★核心
-│  │     │                          # / enrich.ts（富化流水线）/ embedding.ts（向量化+缓存）
+│  │     │                          # / enrich.ts（富化流水线）/ consolidate.ts（标签压缩）
+│  │     │                          # / embedding.ts（向量化+缓存）/ routing.ts（来源分流）
 │  │     ├─ vector/store.ts        # sqlite-vec 封装（vec_media、KNN、维度重建）
 │  │     ├─ search/                # fts.ts（FTS5 trigram+LIKE 兜底）/ orchestrator.ts（Hybrid RRF）
 │  │     ├─ media/queries.ts       # 列表（keyset 分页）/详情查询 + 标题兜底链
@@ -71,7 +75,7 @@ telegram-media-archive/
 │        └─ pages/                 # dashboard / library / media / search / inbox / ai / settings
 │
 ├─ packages/shared/                # @tma/shared：zod 契约 + TS 类型 + WS 事件名（前后端同源）
-│  └─ src/{contracts,events,index}.ts
+│  └─ src/{contracts,events,album,index}.ts
 │
 ├─ docs/                           # ★文档真源（看这里，别猜）
 │  ├─ architecture.md              # 需求基线（只追加实施附录，不回改正文）
@@ -96,8 +100,8 @@ telegram-media-archive/
 eval "$(fnm env --shell bash)"        # 每个新 shell 必须（fnm 管 Node 24.21 / pnpm 12.6）
 
 pnpm -r typecheck                      # 三包类型检查
-pnpm -F @tma/core test                 # 单测（63 个）
-pnpm -F @tma/core smoke                # 端到端冒烟（21 项断言）★改完必跑
+pnpm -F @tma/core test                 # 单测（123 个）
+pnpm -F @tma/core smoke                # 端到端冒烟（41 项断言）★改完必跑
 pnpm -F @tma/core dev                  # 真实 core（8787）
 pnpm -F @tma/desktop tauri dev         # 桌面端（自动拉起 Vite 5173）
 pnpm -F @tma/core seed:demo            # 重建演示库（.data-demo）
@@ -163,5 +167,8 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 
 ## 下一步
 
-**P3 — 分类体系 + 标签智能**（见 `docs/handoff/NEXT-P2-P5-handoff.md` §6）：
-`media_asset.category / category_source / is_sensitive` 列已在迁移 `0002` 建好（P2 的 classify 已会写），P3 只需接规则映射 + AI 的 `category` 落库 + 人工优先覆盖，并新增 `tags.consolidate` 标签压缩作业与 `GET /api/library/sections`。
+**P4 — Desktop UI 重设计（影音墙）**（见 `docs/handoff/NEXT-P2-P5-handoff.md` §7）：
+从「后台管理风」→「桌面影音客户端」（对标 Jellyfin / Emby / Apple TV），深色优先。
+数据入口已就绪：`GET /api/library/sections`（分类夹 + 计数 + 预览图）、
+`MediaListItem.category / isSensitive / albumCount / mediaGroupId`。
+**P4 必须用户实机审阅后迭代**（先出具体版本，不做纯方案讨论）。

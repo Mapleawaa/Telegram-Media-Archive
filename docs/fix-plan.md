@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **P1** | ✅ 完成（2026-09-29） | A1 A5 A8 B1 B2 B3 B4 B4b E4 | 已提交，见下方清单 |
 | **P2** | ✅ 完成（2026-09-29，演示库实机验收；真机待转发确认） | U1 = G1 G2 G3 G4；根治 A3 | 见 `docs/handoff/P2-ai-routing.md` |
-| **P3** | 分类体系 + 标签智能 | U3 U5 = G5 G6；B5 B8 E2 E3 | 1-1.5 天 |
+| **P3** | ✅ 完成（2026-09-29） | U3 U5 = G5 G6；B5 B8 E2 E3 | 见 `docs/handoff/P3-categories-tags.md`（含实机截图） |
 | **P4** | Desktop UI 重设计（影音墙） | U2 = G8；B7 B10 B11 B12；隐私模式入口 G7 | 2-3 天（含多轮视觉审阅） |
 | **P5** | 细节与运维收口 | B6 B9 B13 B14；D1 D2 D3 D4 D5 D8 | 1 天 |
 
@@ -48,15 +48,18 @@
 | P2-5 | 单条手动开关 | `POST /api/media/:id/ai-policy {skip}`：跳过 → 撤销未跑作业 + manual；恢复 → 重新入队 ai.enrich。详情页动作条开关 | ✅ 实机三态往返正确（解决「转发自群但来源是人」的灰区） |
 | — | 迁移附带 | 因 P2-4 需要落库，`category / category_source / is_sensitive / ai_skip` 一并建在 `0002` | ✅ **P3 不要再加这些列** |
 
-## P3 — 分类体系 + 标签智能
+## P3 — 分类体系 + 标签智能 ✅ 完成（2026-09-29）
+
+> 核心：六类 + 自定义，赋值优先级 **user > llm > rule**；标签压缩**只喂标签**（不看内容）。
+> 收口证据：`docs/handoff/P3-categories-tags.md`（含实机截图）。**未新增任何列**（列已在迁移 `0002` 建好）。
 
 | # | 任务 | 细节 | 验收 |
 |---|---|---|---|
-| P3-1 | **G5 分类体系** | `media_asset.category`（新列）：`movie/series/anime/adult/gallery/other` + 自定义扩展；赋值优先级：人工 > AI > 规则（S/E→series；photo/相册→gallery；成人标签→adult） | 23 条全部有分类；分类夹计数正确 |
-| P3-2 | **G6 标签压缩作业** | 新作业 `tags.consolidate`：**只输入标签列表**（不看内容）→ chat 模型输出 `{keep[], drop[], merge{}, category}` → 应用（保留 audit 以便追溯） | 标签均值 ≤8；18+ 内容标签不再拉满 |
-| P3-3 | **B5 相册聚簇** | 网格按 `media_group_id` 相邻渲染 + 角标；列表视图同理 | 相册在图库中成组出现 |
-| P3-4 | **B8 排序** | 媒体库排序：最新 / 大小 / 时长 / 年份 / 最近更新 | 实拍 |
-| P3-5 | 分类浏览 API | `GET /api/library/sections`（分类夹 + 计数 + 预览图）供 P4 影音墙使用 | — |
+| P3-1 | **G5 分类体系** | `src/metadata/category.ts`：规则（季集→series / 图片→gallery / 兜底 other / 成人标签→敏感）+ AI prompt 的 `category` 落库（llm）+ 人工优先（user 不可覆盖）；`reindex-search` 增分类回填 | ✅ 真实库 25/25 有分类（gallery 13 / other 12，不调模型）；单测 13 例 |
+| P3-2 | **G6 标签压缩作业** | `src/ai/consolidate.ts`：只输入标签 → `{keep,drop,merge,category}` → 应用 + audit；`POST /api/admin/consolidate-tags` 批量；设置页入口 | ✅ 单测 5 例（含 **user 标签不可 drop/merge**、非 JSON 容错）；smoke 断言通过 |
+| P3-3 | **B5 相册聚簇** | 列表暴露 `mediaGroupId`/`albumCount`；shared 纯函数 `clusterByAlbum` 做稳定相邻聚簇；卡片渲染相册角标 | ✅ 实拍：两张相册图显示「2」角标；单测 5 + 5 例 |
+| P3-4 | **B8 排序** | `sort=recent\|updated\|size\|duration\|year`（keyset 仅 recent） | ✅ 实拍：`sort=size` 时 57.1 GB 条排最前 |
+| P3-5 | 分类浏览 API | `GET /api/library/sections`（六类 + 自定义 + 未分类，各带计数与预览图）供 P4 影音墙 | ✅ 演示库 series 3 / anime 1 / gallery 2 / other 6 |
 
 ## P4 — Desktop UI 重设计（影音墙）
 

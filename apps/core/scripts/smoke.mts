@@ -10,6 +10,7 @@ import path from 'node:path';
 import { createServer } from '../src/api/server.js';
 import { AiGateway } from '../src/ai/gateway.js';
 import { enrichMedia } from '../src/ai/enrich.js';
+import { consolidateTags } from '../src/ai/consolidate.js';
 import { embedAsset } from '../src/ai/embedding.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
@@ -367,6 +368,105 @@ const resumed = ctx.db.$client
 check(
   'POST ai-policy skip=false → 重新入队并回 pending',
   policyResume.statusCode === 200 && resumed.aiStatus === 'pending' && resumed.aiSkip === 0,
+);
+
+// ---- 6. P3 分类体系 + 标签智能 ----
+const catRows = ctx.sqlite
+  .prepare(`SELECT id, category, category_source AS src FROM media_asset ORDER BY id`)
+  .all() as { id: number; category: string | null; src: string | null }[];
+const catById = new Map(catRows.map((r) => [r.id, r]));
+check(
+  'P3-1 ingest 规则分类：季集视频 → series（rule）',
+  catById.get(ingested.assetId)?.category === 'series' &&
+    catById.get(ingested.assetId)?.src === 'rule',
+);
+check(
+  'P3-1 ingest 规则分类：图片 → gallery（rule）',
+  catById.get(albumItem.assetId)?.category === 'gallery' &&
+    catById.get(albumItem.assetId)?.src === 'rule',
+);
+check(
+  "P3-1 富化后 AI 的 'other'（没把握）不覆盖确定性规则 → 仍 series/rule",
+  catById.get(ingested.assetId)?.category === 'series' &&
+    catById.get(ingested.assetId)?.src === 'rule',
+);
+
+const sections = await app.inject({ method: 'GET', url: '/api/library/sections' });
+const sectionsBody = json(sections) as {
+  sections: { key: string; label: string; count: number; items: unknown[] }[];
+  total: number;
+};
+const secOf = (k: string) => sectionsBody.sections.find((s) => s.key === k);
+check(
+  'P3-5 GET /api/library/sections（分类夹 + 计数）',
+  sections.statusCode === 200 &&
+    sectionsBody.total >= 4 &&
+    ['movie', 'series', 'anime', 'adult', 'gallery', 'other'].every((k) => Boolean(secOf(k))) &&
+    (secOf('series')?.count ?? 0) >= 1 &&
+    (secOf('gallery')?.count ?? 0) >= 1,
+  `series=${secOf('series')?.count} gallery=${secOf('gallery')?.count}`,
+);
+check(
+  'P3-5 分类夹带预览图',
+  (secOf('gallery')?.items.length ?? 0) >= 1,
+);
+
+const galleryList = await app.inject({ method: 'GET', url: '/api/media?limit=50' });
+const galleryBody = json(galleryList) as {
+  items: { id: number; category: string | null; mediaGroupId: string | null; albumCount: number }[];
+};
+const galleryOnly = await app.inject({ method: 'GET', url: '/api/media?category=gallery' });
+const galleryOnlyBody = json(galleryOnly) as { items: { category: string | null }[] };
+check(
+  'P3-1 GET /api/media?category=gallery 只返回图集',
+  galleryOnly.statusCode === 200 &&
+    galleryOnlyBody.items.length >= 1 &&
+    galleryOnlyBody.items.every((i) => i.category === 'gallery'),
+);
+check(
+  'P3-3 相册组已暴露（mediaGroupId + albumCount）',
+  galleryBody.items.some((i) => i.mediaGroupId === 'album-smoke' && i.albumCount === 1),
+);
+check(
+  'P3-3 非相册条目 albumCount=1（契约：1 = 非相册）',
+  galleryBody.items
+    .filter((i) => i.mediaGroupId === null)
+    .every((i) => i.albumCount === 1),
+);
+
+const bySize = await app.inject({ method: 'GET', url: '/api/media?sort=size&limit=10' });
+const bySizeBody = json(bySize) as { items: { id: number; sizeBytes: number }[] };
+check(
+  'P3-4 排序 sort=size 降序（最大条在最前）',
+  bySize.statusCode === 200 &&
+    bySizeBody.items.length >= 3 &&
+    bySizeBody.items[0]!.id === third.assetId &&
+    bySizeBody.items[0]!.sizeBytes >= bySizeBody.items[1]!.sizeBytes,
+);
+
+// 标签压缩：真实 mock 网关（mock 返回富化 JSON，无 keep/drop/merge → 不应改动标签）
+const tagsBeforeConsolidate = (
+  ctx.sqlite
+    .prepare(`SELECT COUNT(*) AS n FROM media_tag WHERE media_asset_id = ? AND source = 'user'`)
+    .get(blacklisted.assetId) as { n: number }
+).n;
+const consolidated = await consolidateTags(ctx, ai, blacklisted.assetId);
+const tagsAfterConsolidate = (
+  ctx.sqlite
+    .prepare(`SELECT COUNT(*) AS n FROM media_tag WHERE media_asset_id = ? AND source = 'user'`)
+    .get(blacklisted.assetId) as { n: number }
+).n;
+check(
+  'P3-2 tags.consolidate 不误删 user 标签（user 标签在治理中受保护）',
+  tagsAfterConsolidate === tagsBeforeConsolidate && consolidated.mediaId === blacklisted.assetId,
+);
+
+const consolidateBatch = await app.inject({ method: 'POST', url: '/api/admin/consolidate-tags' });
+const consolidateBody = json(consolidateBatch) as { total: number; enqueued: number };
+check(
+  'P3-2 POST /api/admin/consolidate-tags 批量入队',
+  consolidateBatch.statusCode === 200 && consolidateBody.total >= 3 && consolidateBody.enqueued >= 1,
+  `total=${consolidateBody.total} enqueued=${consolidateBody.enqueued}`,
 );
 
 await app.close();

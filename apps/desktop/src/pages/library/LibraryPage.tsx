@@ -2,7 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { LayoutGrid, List } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
-import type { MediaListQuery, MediaType } from '@tma/shared';
+import { clusterByAlbum, type MediaListQuery, type MediaType } from '@tma/shared';
 import { MediaCard, MediaRow } from '@/components/media/MediaCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,23 @@ const TYPE_OPTIONS = [
   { value: 'document', label: '文档' },
 ];
 
+const CATEGORY_OPTIONS = [
+  { value: 'movie', label: '电影' },
+  { value: 'series', label: '剧集' },
+  { value: 'anime', label: '动漫' },
+  { value: 'adult', label: '成人' },
+  { value: 'gallery', label: '图集' },
+  { value: 'other', label: '其他' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'recent', label: '最新' },
+  { value: 'updated', label: '最近更新' },
+  { value: 'size', label: '大小' },
+  { value: 'duration', label: '时长' },
+  { value: 'year', label: '年份' },
+];
+
 const QUALITY_OPTIONS = ['2160p', '1440p', '1080p', '720p', '480p'];
 
 export function LibraryPage() {
@@ -41,10 +58,13 @@ export function LibraryPage() {
       quality: params.get('quality') ?? undefined,
       year: params.get('year') ? Number(params.get('year')) : undefined,
       tag: params.get('tag') ?? undefined,
+      category: params.get('category') ?? undefined,
       aiStatus: (params.get('aiStatus') as MediaListQuery['aiStatus']) ?? undefined,
     }),
     [params],
   );
+
+  const sort = (params.get('sort') as MediaListQuery['sort'] | null) ?? 'recent';
 
   const setFilter = (key: string, value: string | undefined) => {
     const next = new URLSearchParams(params);
@@ -54,9 +74,9 @@ export function LibraryPage() {
   };
 
   const query = useInfiniteQuery({
-    queryKey: ['media', 'library', filters],
+    queryKey: ['media', 'library', filters, sort],
     queryFn: ({ pageParam }) =>
-      api.media({ ...filters, limit: PAGE_SIZE, cursor: pageParam ?? undefined }),
+      api.media({ ...filters, sort, limit: PAGE_SIZE, cursor: pageParam ?? undefined }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
@@ -73,7 +93,8 @@ export function LibraryPage() {
     return () => observer.disconnect();
   }, [query]);
 
-  const items = query.data?.pages.flatMap((p) => p.items) ?? [];
+  // 相册聚簇（P3-3）：把同 media_group_id 的条目拉到相邻位置，便于整组浏览
+  const items = clusterByAlbum(query.data?.pages.flatMap((p) => p.items) ?? []);
   const filterKeys = Object.values(filters).filter(Boolean).length;
 
   return (
@@ -125,6 +146,23 @@ export function LibraryPage() {
         </Select>
 
         <Select
+          value={filters.category ?? 'all'}
+          onValueChange={(v) => setFilter('category', v === 'all' ? undefined : v)}
+        >
+          <SelectTrigger size="sm" className="w-28">
+            <SelectValue placeholder="分类" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部分类</SelectItem>
+            {CATEGORY_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
           value={filters.quality ?? 'all'}
           onValueChange={(v) => setFilter('quality', v === 'all' ? undefined : v)}
         >
@@ -154,6 +192,19 @@ export function LibraryPage() {
             <SelectItem value="partial">部分完成</SelectItem>
             <SelectItem value="done">已分析</SelectItem>
             <SelectItem value="failed">分析失败</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={sort} onValueChange={(v) => setFilter('sort', v === 'recent' ? undefined : v)}>
+          <SelectTrigger size="sm" className="w-28">
+            <SelectValue placeholder="排序" />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 

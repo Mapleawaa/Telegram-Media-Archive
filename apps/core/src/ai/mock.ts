@@ -40,11 +40,14 @@ function lastUserText(req: ChatRequest | VisionRequest): string {
 function mockEnrichmentReply(prompt: string): string {
   const filename = /文件名[:：]\s*(.+)/.exec(prompt)?.[1]?.trim() ?? '';
   const base = filename.replace(/\.[A-Za-z0-9]{2,4}$/, '') || '未命名媒体';
+  // 分类口径与 buildTextPrompt 一致：图片→gallery，其余 mock 无把握给 other
+  const type = /类型[:：]\s*(\w+)/.exec(prompt)?.[1]?.trim() ?? '';
+  const category = type === 'photo' ? 'gallery' : type === 'animation' ? 'anime' : 'other';
   return JSON.stringify({
     title: base.slice(0, 80),
     summary: `[mock] 基于文件名与附言生成的占位摘要：${base.slice(0, 60)}`,
     tags: ['mock标签', '测试'],
-    category: 'video',
+    category,
   });
 }
 
@@ -56,6 +59,13 @@ function mockVisionReply(): string {
   });
 }
 
+function mockConsolidateReply(prompt: string): string {
+  // 标签压缩：mock 只做「原样保留」，不删不并（避免演示库被误改）
+  const list = /标签列表[:：]\s*(.+)/.exec(prompt)?.[1]?.trim() ?? '';
+  const keep = list ? list.split('、').map((t) => t.trim()).filter(Boolean) : [];
+  return JSON.stringify({ keep, drop: [], merge: {}, category: 'other' });
+}
+
 export class MockProvider implements AIProvider {
   readonly id = 'mock';
 
@@ -63,7 +73,12 @@ export class MockProvider implements AIProvider {
     const started = Date.now();
     const prompt = lastUserText(req);
     const isVisionPrompt = prompt.includes('缩略图');
-    const text = isVisionPrompt ? mockVisionReply() : mockEnrichmentReply(prompt);
+    const isConsolidate = prompt.includes('标签归并');
+    const text = isVisionPrompt
+      ? mockVisionReply()
+      : isConsolidate
+        ? mockConsolidateReply(prompt)
+        : mockEnrichmentReply(prompt);
     return Promise.resolve({
       text,
       toolCalls: [],

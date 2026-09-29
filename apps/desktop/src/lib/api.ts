@@ -5,11 +5,13 @@ import type {
   AiRunItem,
   ClassifyRequest,
   ClassifyResponse,
+  ConsolidateTagsResponse,
   ForwardRequest,
   ForwardResponse,
   HealthResponse,
   InboxResponse,
   JobItem,
+  LibrarySectionsResponse,
   MediaDetail,
   MediaListQuery,
   MediaListItem,
@@ -132,6 +134,9 @@ export const api = {
     request<{ ok: true; total: number; enqueued: number }>('/api/admin/reindex-embeddings', {
       method: 'POST',
     }),
+  consolidateTags: () =>
+    request<ConsolidateTagsResponse>('/api/admin/consolidate-tags', { method: 'POST' }),
+  librarySections: () => request<LibrarySectionsResponse>('/api/library/sections'),
   inbox: () => request<InboxResponse>('/api/inbox'),
   aiRuns: (limit = 50) => request<{ items: AiRunItem[] }>(`/api/ai/runs?limit=${limit}`),
   sourcesForward: () => request<SourcesForwardResponse>('/api/sources/forward'),

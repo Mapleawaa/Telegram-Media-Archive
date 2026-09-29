@@ -1,6 +1,7 @@
 import { createServer } from './api/server.js';
 import { AiGateway } from './ai/gateway.js';
 import { enrichMedia } from './ai/enrich.js';
+import { consolidateTags } from './ai/consolidate.js';
 import { embedAsset } from './ai/embedding.js';
 import { loadConfig, redactConfig } from './config.js';
 import type { AppContext } from './context.js';
@@ -76,6 +77,10 @@ worker.register('ai.enrich', async (payload) => {
 worker.register('embedding.create', async (payload) => {
   const mediaId = readMediaId(payload, 'embedding.create');
   await embedAsset(ctx, ai, mediaId);
+});
+worker.register('tags.consolidate', async (payload) => {
+  const mediaId = readMediaId(payload, 'tags.consolidate');
+  await consolidateTags(ctx, ai, mediaId);
 });
 worker.start();
 

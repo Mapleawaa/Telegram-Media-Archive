@@ -3,6 +3,7 @@ import { resolveAiPolicy } from '../ai/routing.js';
 import type { AppContext } from '../context.js';
 import { mediaAsset, mediaMetadata, mediaTag, telegramMessage } from '../database/schema.js';
 import { buildDedupeKey } from '../metadata/dedupe.js';
+import { applyDerivedCategory } from '../metadata/category.js';
 import { rebuildSearchDoc } from '../metadata/rebuild-search-doc.js';
 import { extractHashtags, parseFilename } from '../metadata/rule-parser.js';
 import { filterTags, pruneAssetTags } from '../metadata/tag-policy.js';
@@ -174,6 +175,12 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
         .run();
     }
     pruneAssetTags(ctx, asset.id);
+
+    // P3-1 分类（规则层）：新建 asset 立刻落确定性分类
+    // （文件名的季集→series；图片→gallery）。AI 富化后续会以 'llm' 覆盖它。
+    if (assetCreated) {
+      applyDerivedCategory(ctx, asset.id);
+    }
 
     if (isPrimary) {
       db.update(mediaAsset)

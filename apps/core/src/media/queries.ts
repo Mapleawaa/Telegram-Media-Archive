@@ -2,12 +2,14 @@ import type { Database } from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
 import type {
   AnnotationItem,
+  CategorySource,
   ForwardInfo,
   JobItem,
   JobStatus,
   MediaDetail,
   MediaListItem,
   MediaMetadataItem,
+  MediaSort,
   MediaType,
   Page,
   SearchFilters,
@@ -15,6 +17,7 @@ import type {
 } from '@tma/shared';
 import type { AppContext } from '../context.js';
 import { mediaAnnotation, mediaMetadata, telegramMessage } from '../database/schema.js';
+import { UNCATEGORIZED_KEY } from '../metadata/category.js';
 import { isJunkTitle } from '../metadata/title-policy.js';
 
 export interface ListOptions {
@@ -22,7 +25,7 @@ export interface ListOptions {
   limit: number;
   cursor?: string;
   candidateIds?: number[];
-  order: 'recent' | 'relevance';
+  order: MediaSort;
 }
 
 interface ListRow {
@@ -42,6 +45,11 @@ interface ListRow {
   year: number | null;
   title_norm: string | null;
   file_name: string | null;
+  category: string | null;
+  category_source: string | null;
+  is_sensitive: number;
+  media_group_id: string | null;
+  album_count: number;
   source_count: number;
   primary_thumb: string | null;
   tags: string | null;
@@ -50,7 +58,15 @@ interface ListRow {
 const LIST_SELECT = `
 SELECT a.id, a.canonical_title, a.type, a.mime, a.size, a.duration_sec, a.width, a.height,
        a.ai_status, a.ai_skip, a.created_at, a.file_unique_id,
+       a.category, a.category_source, a.is_sensitive,
        m.quality, m.year, m.title_norm, m.file_name,
+       (SELECT gm.media_group_id FROM telegram_message gm
+         WHERE gm.media_asset_id = a.id AND gm.media_group_id IS NOT NULL
+         ORDER BY gm.is_primary DESC, gm.id ASC LIMIT 1) AS media_group_id,
+       (SELECT COUNT(DISTINCT am.media_asset_id) FROM telegram_message am
+         WHERE am.media_group_id = (SELECT gm2.media_group_id FROM telegram_message gm2
+           WHERE gm2.media_asset_id = a.id AND gm2.media_group_id IS NOT NULL
+           ORDER BY gm2.is_primary DESC, gm2.id ASC LIMIT 1)) AS album_count,
        (SELECT COUNT(*) FROM telegram_message tm WHERE tm.media_asset_id = a.id) AS source_count,
        (SELECT tm.thumbnail_file_id FROM telegram_message tm
          WHERE tm.media_asset_id = a.id AND tm.is_primary = 1 LIMIT 1) AS primary_thumb,
@@ -58,6 +74,16 @@ SELECT a.id, a.canonical_title, a.type, a.mime, a.size, a.duration_sec, a.width,
 FROM media_asset a
 LEFT JOIN media_metadata m ON m.media_asset_id = a.id
 `;
+
+/** 排序 SQL（除 recent 外为一次性排序：数据量小，不做 keyset 游标） */
+const ORDER_SQL: Record<MediaSort, string> = {
+  recent: 'a.created_at DESC, a.id DESC',
+  relevance: 'a.created_at DESC, a.id DESC',
+  size: 'a.size DESC, a.id DESC',
+  duration: '(a.duration_sec IS NULL) ASC, a.duration_sec DESC, a.id DESC',
+  year: '(m.year IS NULL) ASC, m.year DESC, a.id DESC',
+  updated: 'a.updated_at DESC, a.id DESC',
+};
 
 const TYPE_LABELS: Record<string, string> = {
   video: '视频',
@@ -95,6 +121,12 @@ function mapListRow(row: ListRow): MediaListItem {
     hasThumbnail: row.primary_thumb !== null,
     createdAt: row.created_at,
     aiSkip: row.ai_skip === 1,
+    category: row.category,
+    categorySource: (row.category_source as CategorySource | null) ?? null,
+    isSensitive: row.is_sensitive === 1,
+    mediaGroupId: row.media_group_id,
+    // 非相册（media_group_id IS NULL）时子查询恒为 0 → 归一为 1（契约：1 = 非相册）
+    albumCount: row.album_count && row.album_count > 0 ? row.album_count : 1,
   };
 }
 
@@ -146,6 +178,14 @@ function buildWhere(filters: SearchFilters, cursor: string | undefined): {
     );
     params.tag = filters.tag;
   }
+  if (filters.category) {
+    if (filters.category === UNCATEGORIZED_KEY) {
+      where.push('a.category IS NULL');
+    } else {
+      where.push('a.category = @category');
+      params.category = filters.category;
+    }
+  }
   if (cursor) {
     const [ts, id] = cursor.split(':');
     where.push('(a.created_at < @cts OR (a.created_at = @cts AND a.id < @cid))');
@@ -157,7 +197,10 @@ function buildWhere(filters: SearchFilters, cursor: string | undefined): {
 }
 
 export function queryMedia(sqlite: Database, opts: ListOptions): Page<MediaListItem> {
-  const { sql, params } = buildWhere(opts.filters, opts.order === 'recent' ? opts.cursor : undefined);
+  // 只有「最新」用 keyset 游标分页；其余排序一次性返回（数据量小，前端自行处理）
+  const keyset = opts.order === 'recent';
+  const { sql, params } = buildWhere(opts.filters, keyset ? opts.cursor : undefined);
+  const orderSql = ORDER_SQL[opts.order] ?? ORDER_SQL.recent;
 
   if (opts.candidateIds) {
     if (opts.candidateIds.length === 0) return { items: [], nextCursor: null };
@@ -183,14 +226,14 @@ export function queryMedia(sqlite: Database, opts: ListOptions): Page<MediaListI
 
   const rows = sqlite
     .prepare(
-      `${LIST_SELECT} ${sql} ORDER BY a.created_at DESC, a.id DESC LIMIT @limit`,
+      `${LIST_SELECT} ${sql} ORDER BY ${orderSql} LIMIT @limit`,
     )
     .all({ ...params, limit: opts.limit + 1 }) as ListRow[];
 
   const hasMore = rows.length > opts.limit;
   const pageRows = hasMore ? rows.slice(0, opts.limit) : rows;
   const last = pageRows[pageRows.length - 1];
-  const nextCursor = hasMore && last ? `${last.created_at}:${last.id}` : null;
+  const nextCursor = keyset && hasMore && last ? `${last.created_at}:${last.id}` : null;
 
   return { items: pageRows.map(mapListRow), nextCursor };
 }

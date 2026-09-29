@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm';
+import type { ConsolidateTagsResponse } from '@tma/shared';
 import type { AppContext } from '../../context.js';
 import { mediaAsset, mediaMetadata, mediaTag } from '../../database/schema.js';
+import { backfillRuleCategory } from '../../metadata/category.js';
 import { rebuildSearchDoc } from '../../metadata/rebuild-search-doc.js';
 import { extractHashtags } from '../../metadata/rule-parser.js';
 import { filterTags, pruneAssetTags } from '../../metadata/tag-policy.js';
@@ -29,6 +31,7 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
     let titlesCleared = 0;
     let titlesCleaned = 0;
     let titlesRederived = 0;
+    let categoriesFilled = 0;
     const tx = ctx.sqlite.transaction(() => {
       for (const m of messages) {
         let entities: unknown;
@@ -116,6 +119,8 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       }
       for (const id of ids) {
         tagsRemoved += pruneAssetTags(ctx, id);
+        // P3-1 分类回填：只补空缺（不覆盖 llm/user 已有分类）
+        if (backfillRuleCategory(ctx, id)) categoriesFilled += 1;
         rebuildSearchDoc(ctx, id);
       }
     });
@@ -133,6 +138,7 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       titlesCleared,
       titlesCleaned,
       titlesRederived,
+      categoriesFilled,
       tookMs: Date.now() - started,
     };
   });
@@ -154,6 +160,37 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
         'embedding.create',
         { mediaId: id },
         { dedupeKey: `embedding.create:${id}`, priority: 1 },
+      );
+      if (jobId !== undefined) enqueued += 1;
+    }
+    return { ok: true, total: ids.length, enqueued };
+  });
+
+  /**
+   * 批量标签压缩（P3-2，U5）：给全部媒体入队 `tags.consolidate`。
+   * 只输入标签列表（不看内容）→ 模型归并 → 应用。user 标签不可被删/并。
+   * 只对「有标签」的媒体入队，避免空跑烧 token。
+   */
+  app.post('/api/admin/consolidate-tags', async (_req, reply): Promise<ConsolidateTagsResponse | undefined> => {
+    if (!ctx.ai.chatEnabled) {
+      await reply.status(400).send({
+        error: 'chat_disabled',
+        message: '未配置文本模型（AI_CHAT_MODEL）：标签压缩需要 chat 能力',
+      });
+      return;
+    }
+    const ids = (
+      ctx.sqlite
+        .prepare(`SELECT DISTINCT media_asset_id AS id FROM media_tag ORDER BY id`)
+        .all() as { id: number }[]
+    ).map((r) => r.id);
+
+    let enqueued = 0;
+    for (const id of ids) {
+      const jobId = ctx.queue.enqueue(
+        'tags.consolidate',
+        { mediaId: id },
+        { dedupeKey: `tags.consolidate:${id}`, priority: 0 },
       );
       if (jobId !== undefined) enqueued += 1;
     }

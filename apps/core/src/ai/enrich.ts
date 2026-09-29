@@ -8,6 +8,7 @@ import {
   telegramMessage,
 } from '../database/schema.js';
 import { rebuildSearchDoc } from '../metadata/rebuild-search-doc.js';
+import { applyDerivedCategory } from '../metadata/category.js';
 import { filterTags, pruneAssetTags } from '../metadata/tag-policy.js';
 import {
   deriveTitleFromDescription,
@@ -136,7 +137,9 @@ export function buildTextPrompt(input: {
   const lines = [
     '你是媒体归档助手。根据下列信息为这条媒体生成结构化元数据。',
     '只输出 JSON 对象，不要任何解释，字段：',
-    '{"title": 规范标题(尽量短, 无把握时给空字符串), "summary": 一到两句中文摘要, "tags": [3-8 个中文或英文标签], "category": "video|photo|audio|animation|document 之一"}',
+    '{"title": 规范标题(尽量短, 无把握时给空字符串), "summary": 一到两句中文摘要, "tags": [3-8 个中文或英文标签], "category": "归档分类, 取 movie|series|anime|adult|gallery|other 之一(无法判断给 other)"}',
+    '',
+    '分类口径：movie=电影长片；series=电视剧/连续剧；anime=动漫/番剧；adult=成人内容；gallery=图片/写真/图集；other=其余或无法判断。',
     '',
     `文件名: ${input.fileName ?? '(无)'}`,
     `类型: ${input.type}${input.mime ? ` (${input.mime})` : ''}`,
@@ -438,6 +441,10 @@ function applyEnrichment(
   addTags(visionEnrichment?.mood, 'vision');
   // 低价值过滤 / 多来源去重 / 上限截断（含来源群名）
   pruneAssetTags(ctx, assetId);
+
+  // P3-1 分类落库：AI 给出的 category（source='llm'）优先，无 AI 判断时回落确定性规则
+  // （season→series / photo→gallery / 成人标签→adult+敏感）。用户已接管的（'user'）不动。
+  applyDerivedCategory(ctx, assetId, textEnrichment?.category ?? null);
 
   // AI 真的跑出结果时，清掉「跳过 AI」标记（语义：ai_skip=1 ⇔ 当前被排除在 AI 之外）
   db.update(mediaAsset)

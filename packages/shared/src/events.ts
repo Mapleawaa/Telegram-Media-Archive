@@ -5,6 +5,7 @@ export const EVENT_NAMES = [
   'media.analyzed',
   'media.manual_review',
   'media.classified',
+  'media.tags_consolidated',
   'embedding.created',
   'annotation.created',
   'ai.run.started',

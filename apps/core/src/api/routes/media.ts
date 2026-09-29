@@ -56,6 +56,7 @@ export function registerMediaRoutes(
       quality: query.quality,
       year: query.year,
       tag: query.tag,
+      category: query.category,
       aiStatus: query.aiStatus,
     };
 
@@ -72,7 +73,7 @@ export function registerMediaRoutes(
       filters,
       limit: query.limit,
       cursor: query.cursor,
-      order: 'recent',
+      order: query.sort,
     });
   });
 

@@ -5,6 +5,7 @@ import type { AppContext } from '../context.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
 import { registerJobsRoutes } from './routes/jobs.js';
+import { registerLibraryRoutes } from './routes/library.js';
 import { registerMediaRoutes, type ServerDeps } from './routes/media.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSettingsRoutes } from './routes/settings.js';
@@ -51,6 +52,7 @@ export async function createServer(ctx: AppContext, deps: ServerDeps) {
 
   registerMediaRoutes(app, ctx, deps);
   registerSearchRoutes(app, ctx);
+  registerLibraryRoutes(app, ctx);
   registerJobsRoutes(app, ctx);
   registerStatsRoutes(app, ctx);
   registerSettingsRoutes(app, ctx);

@@ -11,7 +11,7 @@ import type { MediaListItem } from '@tma/shared';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { aiStatusLabel, formatBytes, formatDuration, typeLabel } from '@/lib/format';
+import { aiStatusLabel, categoryLabel, formatBytes, formatDuration, typeLabel } from '@/lib/format';
 import { useState } from 'react';
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -64,6 +64,15 @@ export function MediaCard({ item }: { item: MediaListItem }) {
             {formatDuration(item.durationSec)}
           </span>
         ) : null}
+        {item.albumCount > 1 ? (
+          <span
+            className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded bg-black/70 px-1 py-0.5 text-[10px] leading-3 text-white"
+            title={`相册 · ${item.albumCount} 项`}
+          >
+            <Layers className="size-3" />
+            {item.albumCount}
+          </span>
+        ) : null}
       </div>
 
       <div className="space-y-1.5 p-2.5">
@@ -72,6 +81,11 @@ export function MediaCard({ item }: { item: MediaListItem }) {
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
             {typeLabel(item.type)}
           </Badge>
+          {item.category ? (
+            <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+              {categoryLabel(item.category)}
+            </Badge>
+          ) : null}
           {item.quality ? (
             <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
               {item.quality}
@@ -104,6 +118,17 @@ export function MediaRow({ item }: { item: MediaListItem }) {
       <Badge variant="secondary" className="text-[10px]">
         {typeLabel(item.type)}
       </Badge>
+      {item.category ? (
+        <Badge variant="outline" className="text-[10px]">
+          {categoryLabel(item.category)}
+        </Badge>
+      ) : null}
+      {item.albumCount > 1 ? (
+        <span className="flex items-center gap-0.5 text-muted-foreground" title={`相册 · ${item.albumCount} 项`}>
+          <Layers className="size-3" />
+          {item.albumCount}
+        </span>
+      ) : null}
       <span className="w-16 text-muted-foreground">{item.quality ?? '—'}</span>
       <span className="w-20 text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
       <span className="w-24 text-muted-foreground">

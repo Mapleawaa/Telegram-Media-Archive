@@ -58,6 +58,12 @@ export function SettingsPage() {
     onError: (err) => toast.error(err instanceof Error ? err.message : '入队失败'),
   });
 
+  const consolidate = useMutation({
+    mutationFn: api.consolidateTags,
+    onSuccess: (res) => toast.success(`已入队 ${res.enqueued}/${res.total} 条标签压缩任务`),
+    onError: (err) => toast.error(err instanceof Error ? err.message : '入队失败'),
+  });
+
   const toggleSource = useMutation({
     mutationFn: ({ key, skip }: { key: string; skip: boolean }) => {
       const current = new Set(sources.data?.skipSources ?? []);
@@ -316,6 +322,16 @@ export function SettingsPage() {
           </Button>
           <p className="text-[11px] text-muted-foreground">
             规则解析升级或怀疑索引漂移时使用；全量重写 media_search_doc 并同步 FTS。
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => consolidate.mutate()}
+            disabled={consolidate.isPending}
+          >
+            {consolidate.isPending ? '入队中…' : '压缩标签（AI 只看标签）'}
+          </Button>
+          <p className="text-[11px] text-muted-foreground">
+            让 AI 只依据标签列表做归并/去冗余（不读内容）；用户标签永不被删除或合并。
           </p>
         </CardContent>
       </Card>

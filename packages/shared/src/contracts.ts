@@ -29,6 +29,14 @@ export type SourceKeyType = (typeof SOURCE_KEY_TYPES)[number];
 
 /** 分类体系（六类 + 自定义字符串） */
 export const CATEGORY_PRESETS = ['movie', 'series', 'anime', 'adult', 'gallery', 'other'] as const;
+export type CategoryPreset = (typeof CATEGORY_PRESETS)[number];
+
+/** 分类的赋值来源（优先级：user > llm > rule） */
+export const CATEGORY_SOURCES = ['rule', 'llm', 'user'] as const;
+export type CategorySource = (typeof CATEGORY_SOURCES)[number];
+
+/** 归一化分类字符串（自定义分类允许，但长度受限） */
+export const CategoryValueSchema = z.string().trim().min(1).max(32);
 
 export interface MediaListItem {
   id: number;
@@ -48,6 +56,16 @@ export interface MediaListItem {
   createdAt: number;
   /** 单条「跳过 AI」开关状态 */
   aiSkip: boolean;
+  /** 分类体系：movie/series/anime/adult/gallery/other 或自定义字符串 */
+  category: string | null;
+  /** 分类赋值来源（决定后续能否被覆盖：user 不可被 rule/llm 覆盖） */
+  categorySource: CategorySource | null;
+  /** 敏感标记（P4 隐私模式消费） */
+  isSensitive: boolean;
+  /** Telegram 相册组 id（同组媒体相邻渲染 + 相册角标） */
+  mediaGroupId: string | null;
+  /** 同相册组的媒体条数（1 = 非相册，>1 显示角标） */
+  albumCount: number;
 }
 
 /** 归一化后的转发来源（详情页 / 人工分类面板展示用） */
@@ -114,14 +132,19 @@ export interface MediaDetail extends MediaListItem {
   jobs: JobItem[];
 }
 
+/** 媒体库排序：recent/updated 走 keyset 游标；其余按字段排序（数据量小，前端一次取） */
+export const MEDIA_SORTS = ['recent', 'relevance', 'size', 'duration', 'year', 'updated'] as const;
+export type MediaSort = (typeof MEDIA_SORTS)[number];
+
 export const MediaListQuerySchema = z.object({
   q: z.string().trim().min(1).optional(),
   type: MediaTypeSchema.optional(),
   quality: z.string().trim().min(1).optional(),
   year: z.coerce.number().int().optional(),
   tag: z.string().trim().min(1).optional(),
+  category: z.string().trim().min(1).max(32).optional(),
   aiStatus: z.enum(AI_STATUSES).optional(),
-  sort: z.enum(['recent', 'relevance']).default('recent'),
+  sort: z.enum(MEDIA_SORTS).default('recent'),
   limit: z.coerce.number().int().min(1).max(100).default(30),
   cursor: z.string().optional(),
 });
@@ -137,6 +160,7 @@ export const SearchFiltersSchema = z.object({
   quality: z.string().trim().min(1).optional(),
   year: z.coerce.number().int().optional(),
   tag: z.string().trim().min(1).optional(),
+  category: z.string().trim().min(1).max(32).optional(),
   aiStatus: z.enum(AI_STATUSES).optional(),
 });
 export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
@@ -261,7 +285,7 @@ export type AiPolicyRequest = z.infer<typeof AiPolicyRequestSchema>;
 
 export const ClassifyRequestSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
-  category: z.string().trim().min(1).max(32).optional(),
+  category: CategoryValueSchema.optional(),
   sensitive: z.boolean().optional(),
 });
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;
@@ -324,3 +348,42 @@ export const SETTING_KEYS = {
   /** string[]：命中即进人工分类队列，不进模型 */
   aiSkipSources: 'ai_skip_sources',
 } as const;
+
+// ---- P3 分类体系 ----
+
+/** 分类夹（P4 影音墙消费）：一个分类 = 名称 + 计数 + 预览图 */
+export interface LibrarySection {
+  /** 分类 key：movie/series/anime/adult/gallery/other 或自定义；未分类为 __none__ */
+  key: string;
+  label: string;
+  count: number;
+  /** 预览（最新若干条） */
+  items: MediaListItem[];
+}
+
+export interface LibrarySectionsResponse {
+  sections: LibrarySection[];
+  total: number;
+}
+
+// ---- P3 标签压缩作业 ----
+
+/** 批量入队标签压缩 */
+export interface ConsolidateTagsResponse {
+  ok: true;
+  total: number;
+  enqueued: number;
+}
+
+/** 单条标签压缩结果（保留以便追溯） */
+export interface ConsolidateTagsResult {
+  mediaId: number;
+  /** 保留标签数 */
+  kept: number;
+  /** 被删除的标签（低价值/冗余） */
+  dropped: string[];
+  /** 被合并的标签：原名 → 归并名 */
+  merged: Record<string, string>;
+  /** 顺带修正的分类（若模型给出且未被用户锁定） */
+  category: string | null;
+}
