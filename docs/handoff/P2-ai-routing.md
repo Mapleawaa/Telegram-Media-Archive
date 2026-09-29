@@ -226,4 +226,47 @@ $ POST /api/admin/reindex-search
 | 图片的构图/方向信息 | 现在只在标签里（已过滤），未落成结构化字段 | P3/P4 需要时可由 width/height 确定性推导 |
 | 相册 | 图片仍「一图一媒体」（E2 待拍板） | P3-3 相册聚簇 |
 | `reindex` 计数非零抖动 | `tagsAdded/tagsRemoved` 每次各 4：附言 hashtag 超过 8 个上限时，回填的新 id 会被 `pruneAssetTags` 再裁掉。**最终状态完全稳定**（连跑 3 次总标签恒为 163），只是计数噪声 | 低优先，不改（改动会牵动「新 rule 标签可挤掉 llm 标签」的既有语义） |
-2. **P3（分类体系 + 标签智能）**：`media_asset.category / is_sensitive / category_source` 列已就绪；P3-1 只需写规则映射 + 把 AI prompt 的 `category` 字段接上落库 + 人工优先覆盖；P3-2 `tags.consolidate` 作业注意「user 标签不可 drop/merge」。
+
+---
+
+## 6. 存量补救：`purge:ai`（拉黑之前已富化的内容）
+
+### 6.1 为什么需要它
+
+P2 的分流是**入库时**生效的（§1 决定 2：已富化的 asset 不被降级）。这留下一个空档：
+**某来源在配好「跳过 AI」策略之前就已入库并走完模型的内容**——它的内容已经发给了外部 API（DeepSeek），
+但用户此时才决定「这条来源不该进模型」。黑名单管不了已经发生的事。
+
+`purge:ai` 就是这个补救入口：把指定媒体的 **AI 产物**清干净，退回人工分类队列，
+让「不该进模型」的存量条目也回到「待分类」，与后续新内容保持一致。
+
+> 触发场景即 §5.1 实测：用户从「宅次元同人馆NSFW」(@ciyuanb) 转发的 #24/#25 在拉黑前已跑完 DeepSeek，
+> 拉黑后需要把这两条的 AI 痕迹清掉。
+
+### 6.2 删什么 / 留什么
+
+| 处理 | 对象 | 原因 |
+|---|---|---|
+| **删** | `media_tag` 中 `source ∈ {llm, vision}` 的行 | AI 打的标签；`rule`（附言 hashtag）/`user` 标签保留——它们不来自模型 |
+| **清空** | `media_metadata.summary` 与 `extracted_by` | AI 摘要/视觉描述属模型产物 |
+| **清空** | `media_asset.canonical_title` | 该标题可能是 AI/视觉描述派生（`deriveTitleFromDescription`），UI 回落「类型 #id」 |
+| **置位** | `ai_status='manual'` + `ai_skip=1`，并 `queue.cancelForMedia` 撤销未跑的作业 | 回到「待分类」队列，语义与命中来源策略一致 |
+| **清** | `media_embedding` 行 + 向量（`deleteVector`）+ 重建搜索文档 | 派生数据保持一致，避免残留旧摘要/标签的索引 |
+| **⚠ 保留** | `ai_runs` / `ai_steps` | **审计事实**：这些内容确实调用过模型，抹掉会丢失「谁在何时调过模型」的记录。清退不改写历史 |
+
+脚本位置 `apps/core/scripts/purge-ai.mts`，命令 `pnpm -F @tma/core purge:ai <mediaId...>`（可传多个 id）。
+脚本本身**不调用任何模型**（静默 logger），因此不产生 token 成本。
+
+### 6.3 实测结果（真实库 8787）
+
+清退后 `apps/core/.data/archive.db` 状态（只读复查）：
+
+| id | ai_status | ai_skip | canonical_title | summary | extracted_by | 标签 |
+|---|---|---|---|---|---|---|
+| 24 | `manual` | 1 | `null` | `null` | `null` | `悲子`(rule) |
+| 25 | `manual` | 1 | `null` | `null` | `null` | `悲子`(rule) |
+
+- `ai_runs` 总数 58（**未减少**）——审计保留，符合预期。
+- 两条只剩 `rule` 标签（附言 hashtag），AI 标签已清空；已出现在 Inbox「待分类」。
+- 可复现（在 `apps/core` 下执行）：
+  `node -e "const D=require('better-sqlite3');const db=new D('.data/archive.db',{readonly:true});console.log(db.prepare('SELECT id,ai_status,ai_skip,canonical_title FROM media_asset WHERE id IN (24,25)').all())"`

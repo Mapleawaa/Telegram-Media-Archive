@@ -14,7 +14,8 @@
     "ai:probe": "tsx scripts/ai-probe.mts",
     "ai:check": "tsx scripts/ai-check.mts",
     "export:user-data": "tsx scripts/export-user-data.mts",
-    "smoke": "tsx scripts/smoke.mts"
+    "smoke": "tsx scripts/smoke.mts",
+    "purge:ai": "tsx scripts/purge-ai.mts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

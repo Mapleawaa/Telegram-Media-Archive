@@ -102,6 +102,7 @@ pnpm -F @tma/core dev                  # 真实 core（8787）
 pnpm -F @tma/desktop tauri dev         # 桌面端（自动拉起 Vite 5173）
 pnpm -F @tma/core seed:demo            # 重建演示库（.data-demo）
 pnpm -F @tma/core export:user-data     # 备份用户数据
+pnpm -F @tma/core purge:ai 24 25       # 清退指定媒体的 AI 产物 → 退回「待分类」（存量补救，见 P2 收口 §6）
 pnpm -F @tma/core db:generate          # 生成 Drizzle 迁移（自定义 SQL 用 --custom）
 ```
 
