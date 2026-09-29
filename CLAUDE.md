@@ -173,6 +173,25 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 | 中文经 Git Bash curl | 请求体中文会因编码失败 → 用 `node --input-type=module -e "fetch(...)"` 测 |
 | Vite 旧模块缓存 | 页面行为诡异先 touch 相关文件或强刷 |
 
+## 打包（Tauri，2026-09-29 打通）
+
+```bash
+pnpm -F @tma/desktop tauri build
+# 产物：
+#   apps/desktop/src-tauri/target/release/tma-desktop.exe（裸 exe 14MB）
+#   apps/desktop/src-tauri/target/release/bundle/msi/Telegram Media Archive_0.1.0_x64_en-US.msi（8MB）
+```
+
+三个坑（已修在配置里，但要知道为什么）：
+1. **vite 清空 dist 会撞 safe-delete 批量守卫**（dist/assets 100+ 文件）——先 `mv dist` 到临时目录再 build。
+2. **schemars 0.8.22 + indexmap 1.9.3 编译失败**（`Map<K,V>` 丢默认泛型）：indexmap 1.9.3 无 default
+   feature，`std` 无人开启时其 build.rs 走 autocfg 探测，探测失败就不打 `has_std`。修复在
+   `src-tauri/Cargo.toml`：`indexmap_19 = { package = "indexmap", version = "1.9.3", features = ["std"] }`
+   （**[dependencies] 与 [build-dependencies] 双侧都要**——resolver v3 下 host 侧 feature 单独统一；
+   两处 rename key 必须同名）。
+3. **WiX/NSIS 从 GitHub 下载会被墙**：给 shell 设 `HTTPS_PROXY=http://127.0.0.1:7890`（本地 Clash）再跑；
+   `bundle.targets` 当前 `["msi"]`，要 NSIS 改回后同样走代理下载。
+
 ## 端口与数据
 
 | 服务 | 地址 | 数据 |
