@@ -31,12 +31,12 @@ interface ConsolidatePlan {
 export function buildConsolidatePrompt(tags: readonly string[]): string {
   return [
     '你在做「标签归并」。**只依据下面这组标签本身，不要推测媒体内容**。',
+    '直接给出 JSON 结果，**不要输出任何思考过程、推理或解释文字**，第一个字符必须是 {。',
+    '字段定义：{"keep": [保留的标签], "drop": [删除的低价值/冗余标签], "merge": {"原标签": "归并后的标签"}, "category": "按标签推断的归档分类 movie|series|anime|adult|gallery|other 之一(无法判断给 other)"}',
     '目标：去冗余、合并同义/近义/写法变体，让最终标签既少又准（保留 3-8 个）。',
-    '只输出 JSON 对象，不要任何解释，字段：',
-    '{"keep": [保留的标签], "drop": [删除的低价值/冗余标签], "merge": {"原标签": "归并后的标签"}, "category": "按标签推断的归档分类 movie|series|anime|adult|gallery|other 之一(无法判断给 other)"}',
     '要求：keep/drop 的元素必须来自下面的列表；merge 的目标可以是列表里的，也可以是更规范的新写法；宁可少动，不要滥删。',
     '',
-    `标签列表：${tags.join('、')}`,
+    `标签列表（待归并）：${tags.join('、')}`,
   ].join('\n');
 }
 
@@ -71,7 +71,9 @@ export async function consolidateTags(
         ],
         jsonMode: true,
         temperature: 0.1,
-        maxTokens: 800,
+        // DeepSeek 是推理型模型：800 token 时实测 9/25 次推理占满预算、正文没有 JSON
+        // （与视觉模型同一个坑）。给足余量，配合 prompt 里的「不要推理」。
+        maxTokens: 2_048,
       },
       { runId, label: 'tags.consolidate' },
     );
