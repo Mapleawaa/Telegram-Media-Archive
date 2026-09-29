@@ -12,7 +12,9 @@
     "db:migrate": "drizzle-kit migrate",
     "seed:demo": "tsx scripts/seed-demo.mts",
     "ai:probe": "tsx scripts/ai-probe.mts",
-    "ai:check": "tsx scripts/ai-check.mts"
+    "ai:check": "tsx scripts/ai-check.mts",
+    "export:user-data": "tsx scripts/export-user-data.mts",
+    "smoke": "tsx scripts/smoke.mts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
