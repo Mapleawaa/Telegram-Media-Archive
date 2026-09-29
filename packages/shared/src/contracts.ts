@@ -10,13 +10,25 @@ export const HealthResponseSchema = z.object({
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
 export const MEDIA_TYPES = ['video', 'photo', 'audio', 'animation', 'document', 'other'] as const;
-export const AI_STATUSES = ['pending', 'partial', 'done', 'failed', 'skipped'] as const;
+// 'manual'：命中「跳过 AI」来源策略 → 不进模型，进人工分类队列
+export const AI_STATUSES = ['pending', 'partial', 'done', 'failed', 'skipped', 'manual'] as const;
 export const JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead'] as const;
 
 export const MediaTypeSchema = z.enum(MEDIA_TYPES);
 export type MediaType = z.infer<typeof MediaTypeSchema>;
 export type AiStatus = (typeof AI_STATUSES)[number];
 export type JobStatus = (typeof JOB_STATUSES)[number];
+
+/** 转发来源的四种形态 */
+export const FORWARD_ORIGIN_TYPES = ['user', 'hidden_user', 'chat', 'channel'] as const;
+export type ForwardOriginType = (typeof FORWARD_ORIGIN_TYPES)[number];
+
+/** 来源策略规则的 key 前缀（与 AI 分流器一致） */
+export const SOURCE_KEY_TYPES = ['channel', 'chat', 'user', 'name'] as const;
+export type SourceKeyType = (typeof SOURCE_KEY_TYPES)[number];
+
+/** 分类体系（六类 + 自定义字符串） */
+export const CATEGORY_PRESETS = ['movie', 'series', 'anime', 'adult', 'gallery', 'other'] as const;
 
 export interface MediaListItem {
   id: number;
@@ -34,6 +46,18 @@ export interface MediaListItem {
   tags: string[];
   hasThumbnail: boolean;
   createdAt: number;
+  /** 单条「跳过 AI」开关状态 */
+  aiSkip: boolean;
+}
+
+/** 归一化后的转发来源（详情页 / 人工分类面板展示用） */
+export interface ForwardInfo {
+  originType: ForwardOriginType;
+  chatId: number | null;
+  chatTitle: string | null;
+  chatUsername: string | null;
+  senderUserId: number | null;
+  senderName: string | null;
 }
 
 export interface SourceItem {
@@ -46,6 +70,7 @@ export interface SourceItem {
   messageDate: number;
   via: 'bot' | 'mtproto';
   isPrimary: boolean;
+  forward: ForwardInfo | null;
 }
 
 export interface AnnotationItem {
@@ -204,6 +229,58 @@ export interface InboxResponse {
   partial: MediaListItem[];
   failed: MediaListItem[];
   done: MediaListItem[];
+  /** 命中「跳过 AI」来源策略、等人工分类的媒体 */
+  manual: MediaListItem[];
+}
+
+/** 观察到的转发来源（来源与 AI 策略面板） */
+export interface SourceForwardItem {
+  /** 策略 key：channel:<chatId> / chat:<chatId> / user:<userId> / name:<senderName> */
+  key: string;
+  type: SourceKeyType;
+  chatId: number | null;
+  title: string | null;
+  username: string | null;
+  name: string | null;
+  count: number;
+  lastSeenAt: number;
+  /** 该来源下已命中跳过策略（ai_status !== 正常走 AI）的条数 */
+  skippedCount: number;
+}
+
+export interface SourcesForwardResponse {
+  items: SourceForwardItem[];
+  /** 当前生效的跳过列表 */
+  skipSources: string[];
+}
+
+export const AiPolicyRequestSchema = z.object({
+  skip: z.boolean(),
+});
+export type AiPolicyRequest = z.infer<typeof AiPolicyRequestSchema>;
+
+export const ClassifyRequestSchema = z.object({
+  tags: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
+  category: z.string().trim().min(1).max(32).optional(),
+  sensitive: z.boolean().optional(),
+});
+export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;
+
+export interface ClassifyResponse {
+  ok: true;
+  mediaId: number;
+  tagsAdded: number;
+  category: string | null;
+  sensitive: boolean;
+}
+
+export interface TagCountItem {
+  tag: string;
+  count: number;
+}
+
+export interface TagTopResponse {
+  items: TagCountItem[];
 }
 
 export const EnrichRequestSchema = z.object({
@@ -244,4 +321,6 @@ export const SETTING_KEYS = {
   forwardMode: 'forward_mode',
   embeddingModel: 'embedding_model',
   embeddingDim: 'embedding_dim',
+  /** string[]：命中即进人工分类队列，不进模型 */
+  aiSkipSources: 'ai_skip_sources',
 } as const;

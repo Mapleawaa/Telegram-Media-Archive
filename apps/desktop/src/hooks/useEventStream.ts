@@ -32,6 +32,8 @@ export function useEventStream(): void {
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
       void queryClient.invalidateQueries({ queryKey: ['inbox'] });
       void queryClient.invalidateQueries({ queryKey: ['ai-runs'] });
+      void queryClient.invalidateQueries({ queryKey: ['sources'] });
+      void queryClient.invalidateQueries({ queryKey: ['tags'] });
       if (broad) void queryClient.invalidateQueries({ queryKey: ['media'] });
       for (const id of ids) {
         void queryClient.invalidateQueries({ queryKey: ['media', id] });
@@ -82,6 +84,9 @@ export function useEventStream(): void {
         }
         if (frame.event === 'telegram.message.forwarded') {
           toast.success('已转发到 Telegram');
+        }
+        if (frame.event === 'media.manual_review') {
+          toast.info('命中「跳过 AI」来源，已送入待分类队列');
         }
         pendingBroad = true;
         scheduleFlush();

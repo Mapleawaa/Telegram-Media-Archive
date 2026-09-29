@@ -3,6 +3,8 @@ export const EVENT_NAMES = [
   'media.created',
   'media.updated',
   'media.analyzed',
+  'media.manual_review',
+  'media.classified',
   'embedding.created',
   'annotation.created',
   'ai.run.started',

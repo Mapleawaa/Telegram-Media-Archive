@@ -1,5 +1,5 @@
 import type { Message } from 'grammy/types';
-import type { IncomingMedia, IncomingMessage } from '../types.js';
+import type { ForwardOrigin, IncomingMedia, IncomingMessage } from '../types.js';
 
 const PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -92,6 +92,74 @@ function chatTitle(chat: ChatLike): string | undefined {
   return chat.title;
 }
 
+function userName(user: { first_name: string; last_name?: string; username?: string }): string | undefined {
+  return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username;
+}
+
+/** 兼容字段（Bot API 7.0 前）：新版服务端不再下发，但历史/自建网关仍可能出现 */
+interface LegacyForwardFields {
+  forward_from_chat?: { id: number; title?: string; username?: string };
+  forward_from?: { id: number; first_name: string; last_name?: string; username?: string };
+  forward_sender_name?: string;
+}
+
+/**
+ * 解析转发来源。优先 Bot API 7.0+ 的 `forward_origin`（四种 type），
+ * 缺失时回退到旧的 `forward_from_chat` / `forward_from` / `forward_sender_name`。
+ */
+export function extractForwardOrigin(msg: Message): ForwardOrigin | undefined {
+  const origin = msg.forward_origin;
+  if (origin) {
+    switch (origin.type) {
+      case 'user':
+        return {
+          originType: 'user',
+          senderUserId: origin.sender_user.id,
+          senderName: userName(origin.sender_user),
+        };
+      case 'hidden_user':
+        return { originType: 'hidden_user', senderName: origin.sender_user_name };
+      case 'chat':
+        return {
+          originType: 'chat',
+          chatId: origin.sender_chat.id,
+          chatTitle: origin.sender_chat.title ?? origin.sender_chat.username,
+          chatUsername: origin.sender_chat.username,
+        };
+      case 'channel':
+        return {
+          originType: 'channel',
+          chatId: origin.chat.id,
+          chatTitle: origin.chat.title,
+          chatUsername: origin.chat.username,
+        };
+      default:
+        return undefined;
+    }
+  }
+
+  const legacy = msg as unknown as LegacyForwardFields;
+  if (legacy.forward_from_chat) {
+    return {
+      originType: 'chat',
+      chatId: legacy.forward_from_chat.id,
+      chatTitle: legacy.forward_from_chat.title ?? legacy.forward_from_chat.username,
+      chatUsername: legacy.forward_from_chat.username,
+    };
+  }
+  if (legacy.forward_from) {
+    return {
+      originType: 'user',
+      senderUserId: legacy.forward_from.id,
+      senderName: userName(legacy.forward_from),
+    };
+  }
+  if (legacy.forward_sender_name) {
+    return { originType: 'hidden_user', senderName: legacy.forward_sender_name };
+  }
+  return undefined;
+}
+
 export function extractIncoming(msg: Message): IncomingMessage | null {
   const media = extractMedia(msg);
   if (!media) return null;
@@ -116,5 +184,6 @@ export function extractIncoming(msg: Message): IncomingMessage | null {
     captionEntities: msg.caption_entities,
     messageDate: msg.date * 1000,
     media,
+    forward: extractForwardOrigin(msg),
   };
 }

@@ -1,3 +1,4 @@
+import { SETTING_KEYS } from '@tma/shared';
 import { describe, expect, it } from 'vitest';
 import { createTestContext } from '../database/test-utils.js';
 import {
@@ -7,6 +8,7 @@ import {
   mediaTag,
   telegramMessage,
 } from '../database/schema.js';
+import { setSetting } from '../settings/store.js';
 import type { IncomingMessage } from '../telegram/types.js';
 import { ingestMessage } from './ingest.js';
 
@@ -161,6 +163,96 @@ describe('ingestMessage', () => {
       .prepare(`SELECT rowid FROM fts_media WHERE fts_media MATCH ?`)
       .all('"Redgectx"');
     expect(ftsHit.length).toBeGreaterThan(0);
+  });
+
+  it('转发来源落库（channel / user / hidden_user 三种形态）', () => {
+    const ctx = createTestContext();
+    ingestMessage(
+      ctx,
+      makeMsg({
+        messageId: 21,
+        forward: { originType: 'channel', chatId: -100111, chatTitle: '资源频道', chatUsername: 'res_ch' },
+      }),
+    );
+    ingestMessage(
+      ctx,
+      makeMsg({
+        messageId: 22,
+        media: { ...makeMsg().media, fileId: 'f2', fileUniqueId: 'u2' },
+        forward: { originType: 'user', senderUserId: 4242, senderName: 'Ada' },
+      }),
+    );
+    ingestMessage(
+      ctx,
+      makeMsg({
+        messageId: 23,
+        media: { ...makeMsg().media, fileId: 'f3', fileUniqueId: 'u3' },
+        forward: { originType: 'hidden_user', senderName: '匿名君' },
+      }),
+    );
+
+    const rows = ctx.db.select().from(telegramMessage).all();
+    const byId = new Map(rows.map((r) => [r.messageId, r]));
+    expect(byId.get(21)).toMatchObject({
+      forwardOriginType: 'channel',
+      forwardFromChatId: -100111,
+      forwardFromChatTitle: '资源频道',
+      forwardFromChatUsername: 'res_ch',
+    });
+    expect(byId.get(22)).toMatchObject({
+      forwardOriginType: 'user',
+      forwardSenderUserId: 4242,
+      forwardSenderName: 'Ada',
+    });
+    expect(byId.get(23)).toMatchObject({
+      forwardOriginType: 'hidden_user',
+      forwardSenderName: '匿名君',
+      forwardSenderUserId: null,
+    });
+  });
+
+  it('命中「跳过 AI」来源 → ai_status=manual，不入队，无 AI 记录', () => {
+    const ctx = createTestContext({ AI_PROVIDER: 'mock', AI_CHAT_MODEL: 'mock/chat' } as never);
+    setSetting(ctx, SETTING_KEYS.aiSkipSources, ['channel:-100111']);
+
+    const result = ingestMessage(
+      ctx,
+      makeMsg({ messageId: 31, forward: { originType: 'channel', chatId: -100111, chatTitle: '敏感频道' } }),
+    );
+
+    const asset = ctx.db.select().from(mediaAsset).all()[0]!;
+    expect(asset.id).toBe(result.assetId);
+    expect(asset.aiStatus).toBe('manual');
+    expect(asset.aiSkip).toBe(true);
+
+    const jobs = ctx.sqlite.prepare(`SELECT type FROM jobs WHERE status = 'pending'`).all() as {
+      type: string;
+    }[];
+    expect(jobs).toHaveLength(0);
+
+    const runs = ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM ai_runs`).get() as { n: number };
+    expect(runs.n).toBe(0);
+
+    const audits = ctx.db.select().from(auditEvents).all();
+    expect(audits.map((a) => a.event)).toContain('media.manual_review');
+  });
+
+  it('未命中黑名单的正常来源 → 照常入队 ai.enrich', () => {
+    const ctx = createTestContext({ AI_PROVIDER: 'mock', AI_CHAT_MODEL: 'mock/chat' } as never);
+    setSetting(ctx, SETTING_KEYS.aiSkipSources, ['channel:-100999']);
+
+    ingestMessage(
+      ctx,
+      makeMsg({ messageId: 41, forward: { originType: 'channel', chatId: -100111 } }),
+    );
+
+    const asset = ctx.db.select().from(mediaAsset).all()[0]!;
+    expect(asset.aiStatus).toBe('pending');
+    expect(asset.aiSkip).toBe(false);
+    const jobs = ctx.sqlite.prepare(`SELECT type FROM jobs WHERE status = 'pending'`).all() as {
+      type: string;
+    }[];
+    expect(jobs.map((j) => j.type)).toEqual(['ai.enrich']);
   });
 
   it('入库失败回滚：无半成品数据', () => {

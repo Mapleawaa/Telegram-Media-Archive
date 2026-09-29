@@ -241,6 +241,134 @@ check('forward 配目标后 → ok（假 client）', forwardOk.statusCode === 20
 const reindex = await app.inject({ method: 'POST', url: '/api/admin/reindex-search' });
 check('重建搜索索引', reindex.statusCode === 200 && (json(reindex) as { count: number }).count >= 3);
 
+// ---- 5. P2 AI 介入分流器（来源黑名单 → 不进模型 → 人工分类）----
+const runsBefore = (ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM ai_runs`).get() as { n: number }).n;
+
+await app.inject({
+  method: 'PATCH',
+  url: '/api/settings',
+  payload: { key: 'ai_skip_sources', value: ['channel:-100777'] },
+});
+
+const blacklisted = ingestMessage(
+  ctx,
+  makeMsg({
+    messageId: 201,
+    caption: '#黑名单来源 #学习资料',
+    media: {
+      kind: 'video',
+      fileId: 'f201',
+      fileUniqueId: 'u201',
+      fileName: 'secret.lesson.S01E01.1080p.mkv',
+      mime: 'video/x-matroska',
+      size: 1_500_000_000,
+      durationSec: 1800,
+      thumbnailFileId: 't201',
+    },
+    forward: { originType: 'channel', chatId: -100777, chatTitle: '敏感频道', chatUsername: 'sensitive_ch' },
+  }),
+);
+const blacklistedAsset = ctx.db.$client
+  .prepare(`SELECT ai_status AS aiStatus, ai_skip AS aiSkip FROM media_asset WHERE id = ?`)
+  .get(blacklisted.assetId) as { aiStatus: string; aiSkip: number };
+check(
+  '黑名单来源入库 → ai_status=manual 且不入队',
+  blacklistedAsset.aiStatus === 'manual' &&
+    blacklistedAsset.aiSkip === 1 &&
+    (
+      ctx.sqlite
+        .prepare(`SELECT COUNT(*) AS n FROM jobs WHERE json_extract(payload,'$.mediaId') = ?`)
+        .get(blacklisted.assetId) as { n: number }
+    ).n === 0,
+);
+
+const runsAfter = (ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM ai_runs`).get() as { n: number }).n;
+check('黑名单内容不产生 ai_runs 记录', runsAfter === runsBefore, `runs=${runsBefore}→${runsAfter}`);
+
+const forwardColumns = ctx.sqlite
+  .prepare(
+    `SELECT forward_origin_type AS t, forward_from_chat_id AS id, forward_from_chat_title AS title,
+            forward_from_chat_username AS username
+     FROM telegram_message WHERE chat_id = ? AND message_id = 201`,
+  )
+  .get(config.TG_ARCHIVE_CHAT_ID) as {
+  t: string;
+  id: number;
+  title: string;
+  username: string;
+};
+check(
+  '转发来源已落库（channel / id / 标题 / 用户名）',
+  forwardColumns.t === 'channel' &&
+    forwardColumns.id === -100777 &&
+    forwardColumns.title === '敏感频道' &&
+    forwardColumns.username === 'sensitive_ch',
+);
+
+const sources = await app.inject({ method: 'GET', url: '/api/sources/forward' });
+const sourcesBody = json(sources) as {
+  items: { key: string; type: string; skippedCount: number }[];
+  skipSources: string[];
+};
+check(
+  'GET /api/sources/forward（来源列表 + 跳过态）',
+  sourcesBody.items.some((i) => i.key === 'channel:-100777' && i.type === 'channel') &&
+    sourcesBody.skipSources.includes('channel:-100777'),
+);
+
+const manualInbox = await app.inject({ method: 'GET', url: '/api/inbox' });
+check(
+  'GET /api/inbox 出现「待分类」分组',
+  (json(manualInbox) as { manual: unknown[] }).manual.length === 1,
+);
+
+const classify = await app.inject({
+  method: 'POST',
+  url: `/api/media/${blacklisted.assetId}/classify`,
+  payload: { tags: ['黑名单来源', '学习资料', 'cos'], category: 'anime', sensitive: true },
+});
+const classifyBody = json(classify) as { ok: boolean; tagsAdded: number };
+const classifiedTags = ctx.sqlite
+  .prepare(`SELECT tag FROM media_tag WHERE media_asset_id = ? AND source = 'user'`)
+  .all(blacklisted.assetId) as { tag: string }[];
+const classifiedAsset = ctx.db.$client
+  .prepare(`SELECT ai_status AS aiStatus, category, is_sensitive AS isSensitive FROM media_asset WHERE id = ?`)
+  .get(blacklisted.assetId) as { aiStatus: string; category: string; isSensitive: number };
+check(
+  'POST classify → user 标签 + 分类 + 敏感标记 + ai_status=skipped',
+  classifyBody.ok === true &&
+    classifiedTags.length === 3 &&
+    classifiedAsset.aiStatus === 'skipped' &&
+    classifiedAsset.category === 'anime' &&
+    classifiedAsset.isSensitive === 1,
+);
+check(
+  'classify 写入 media.classified 审计',
+  (ctx.sqlite
+    .prepare(`SELECT COUNT(*) AS n FROM audit_events WHERE event = 'media.classified'`)
+    .get() as { n: number }).n === 1,
+);
+
+const topTags = await app.inject({ method: 'GET', url: '/api/tags/top?source=user&limit=10' });
+const topTagsBody = json(topTags) as { items: { tag: string; count: number }[] };
+check(
+  'GET /api/tags/top（历史常用 user 标签）',
+  topTagsBody.items.some((t) => t.tag === 'cos' && t.count >= 1),
+);
+
+const policyResume = await app.inject({
+  method: 'POST',
+  url: `/api/media/${blacklisted.assetId}/ai-policy`,
+  payload: { skip: false },
+});
+const resumed = ctx.db.$client
+  .prepare(`SELECT ai_status AS aiStatus, ai_skip AS aiSkip FROM media_asset WHERE id = ?`)
+  .get(blacklisted.assetId) as { aiStatus: string; aiSkip: number };
+check(
+  'POST ai-policy skip=false → 重新入队并回 pending',
+  policyResume.statusCode === 200 && resumed.aiStatus === 'pending' && resumed.aiSkip === 0,
+);
+
 await app.close();
 dbHandle.close();
 

@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { RefreshCw, Sparkles, Tags } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import type { MediaListItem } from '@tma/shared';
+import { ManualClassifyDialog } from '@/components/media/ManualClassifyDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,7 +13,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
 import { formatBytes, formatRelative, typeLabel } from '@/lib/format';
 
-function InboxRow({ item, onEnrich }: { item: MediaListItem; onEnrich?: (id: number) => void }) {
+function InboxRow({
+  item,
+  onEnrich,
+  onClassify,
+}: {
+  item: MediaListItem;
+  onEnrich?: (id: number) => void;
+  onClassify?: (item: MediaListItem) => void;
+}) {
   return (
     <div className="flex items-center gap-3 rounded-md border bg-card px-3 py-2">
       <Link to={`/media/${item.id}`} className="min-w-0 flex-1">
@@ -25,6 +35,11 @@ function InboxRow({ item, onEnrich }: { item: MediaListItem; onEnrich?: (id: num
           <span>{formatRelative(item.createdAt)}</span>
         </div>
       </Link>
+      {onClassify && (
+        <Button size="sm" onClick={() => onClassify(item)}>
+          <Tags className="size-3.5" /> 分类
+        </Button>
+      )}
       {onEnrich && (
         <Button size="sm" variant="outline" onClick={() => onEnrich(item.id)}>
           <Sparkles className="size-3.5" /> 分析
@@ -37,6 +52,7 @@ function InboxRow({ item, onEnrich }: { item: MediaListItem; onEnrich?: (id: num
 export function InboxPage() {
   const queryClient = useQueryClient();
   const inbox = useQuery({ queryKey: ['inbox'], queryFn: api.inbox });
+  const [classifyTarget, setClassifyTarget] = useState<MediaListItem | null>(null);
 
   const enrich = useMutation({
     mutationFn: (id: number) => api.enrich(id),
@@ -57,12 +73,18 @@ export function InboxPage() {
     );
   }
 
-  const data = inbox.data ?? { pending: [], partial: [], failed: [], done: [] };
+  const data = inbox.data ?? { pending: [], partial: [], failed: [], done: [], manual: [] };
   const groups = [
-    { key: 'pending', label: `待分析 (${data.pending.length})`, items: data.pending, action: true },
-    { key: 'partial', label: `部分完成 (${data.partial.length})`, items: data.partial, action: true },
-    { key: 'failed', label: `失败 (${data.failed.length})`, items: data.failed, action: true },
-    { key: 'done', label: `已完成 (${data.done.length})`, items: data.done, action: false },
+    {
+      key: 'manual',
+      label: `待分类 (${data.manual.length})`,
+      items: data.manual,
+      action: 'classify' as const,
+    },
+    { key: 'pending', label: `待分析 (${data.pending.length})`, items: data.pending, action: 'enrich' as const },
+    { key: 'partial', label: `部分完成 (${data.partial.length})`, items: data.partial, action: 'enrich' as const },
+    { key: 'failed', label: `失败 (${data.failed.length})`, items: data.failed, action: 'enrich' as const },
+    { key: 'done', label: `已完成 (${data.done.length})`, items: data.done, action: null },
   ];
 
   return (
@@ -70,11 +92,11 @@ export function InboxPage() {
       <div>
         <h1 className="text-lg font-semibold">Inbox</h1>
         <p className="text-xs text-muted-foreground">
-          AI 富化待办箱：待分析 / 部分完成 / 失败 / 最近完成。失败的可以一键重试。
+          待分类＝命中「跳过 AI」来源、绝不进模型的内容，由你手工归类；其余为 AI 富化待办箱。
         </p>
       </div>
 
-      <Tabs defaultValue="pending">
+      <Tabs defaultValue={data.manual.length > 0 ? 'manual' : 'pending'}>
         <TabsList>
           {groups.map((g) => (
             <TabsTrigger key={g.key} value={g.key}>
@@ -88,7 +110,11 @@ export function InboxPage() {
             {g.items.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  {g.key === 'pending' ? '没有待分析的媒体' : '空'}
+                  {g.key === 'pending'
+                    ? '没有待分析的媒体'
+                    : g.key === 'manual'
+                      ? '没有待分类的媒体'
+                      : '空'}
                 </CardContent>
               </Card>
             ) : (
@@ -97,7 +123,8 @@ export function InboxPage() {
                   <InboxRow
                     key={item.id}
                     item={item}
-                    onEnrich={g.action ? (id) => enrich.mutate(id) : undefined}
+                    onEnrich={g.action === 'enrich' ? (id) => enrich.mutate(id) : undefined}
+                    onClassify={g.action === 'classify' ? (it) => setClassifyTarget(it) : undefined}
                   />
                 ))}
               </div>
@@ -108,8 +135,16 @@ export function InboxPage() {
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <RefreshCw className="size-3.5" />
-        AI 未启用时媒体会直接标记为「跳过」，可在设置里检查 .env 的 AI 配置。
+        来源黑名单在「设置 → 来源与 AI 策略」配置；AI 未启用时媒体会直接标记为「跳过」。
       </div>
+
+      <ManualClassifyDialog
+        item={classifyTarget}
+        open={classifyTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setClassifyTarget(null);
+        }}
+      />
     </div>
   );
 }

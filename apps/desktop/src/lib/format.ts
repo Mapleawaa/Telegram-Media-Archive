@@ -50,10 +50,36 @@ const AI_STATUS_LABELS: Record<string, string> = {
   done: '已分析',
   failed: '分析失败',
   skipped: '跳过',
+  manual: '待分类',
 };
 
 export function aiStatusLabel(status: string): string {
   return AI_STATUS_LABELS[status] ?? status;
+}
+
+/** 分类体系展示名（六类 + 自定义回退原文） */
+const CATEGORY_LABELS: Record<string, string> = {
+  movie: '电影',
+  series: '剧集',
+  anime: '动漫',
+  adult: '成人',
+  gallery: '图集',
+  other: '其他',
+};
+
+export function categoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] ?? category;
+}
+
+const FORWARD_ORIGIN_LABELS: Record<string, string> = {
+  channel: '频道',
+  chat: '群组',
+  user: '用户',
+  hidden_user: '隐藏用户名',
+};
+
+export function forwardOriginLabel(originType: string): string {
+  return FORWARD_ORIGIN_LABELS[originType] ?? originType;
 }
 
 export function telegramMessageUrl(chatId: number, messageId: number): string | null {

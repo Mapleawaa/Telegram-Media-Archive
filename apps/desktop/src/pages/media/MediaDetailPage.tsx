@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  Forward,
   RefreshCw,
   Send,
   Sparkles,
@@ -20,12 +21,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api';
 import {
   aiStatusLabel,
   formatBytes,
   formatDateTime,
   formatDuration,
+  forwardOriginLabel,
   telegramMessageUrl,
   typeLabel,
 } from '@/lib/format';
@@ -115,6 +118,17 @@ export function MediaDetailPage() {
     onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
   });
 
+  const aiPolicy = useMutation({
+    mutationFn: (skip: boolean) => api.setAiPolicy(id, { skip }),
+    onSuccess: (_res, skip) => {
+      toast.success(skip ? '已跳过 AI：转入待分类队列' : '已重新交回 AI 流程');
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '设置失败'),
+  });
+
   if (detail.isPending) {
     return (
       <div className="space-y-4 p-6">
@@ -158,6 +172,18 @@ export function MediaDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <label
+            className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs"
+            title="跳过 AI：不进模型（不审核、不打标签），转入待分类队列"
+          >
+            <Switch
+              checked={!d.aiSkip}
+              disabled={aiPolicy.isPending}
+              onCheckedChange={(checked) => aiPolicy.mutate(!checked)}
+              aria-label={d.aiSkip ? '重新走 AI' : '跳过 AI'}
+            />
+            <span className="text-muted-foreground">{d.aiSkip ? '跳过 AI' : '走 AI'}</span>
+          </label>
           <Button
             size="sm"
             variant="outline"
@@ -298,6 +324,22 @@ export function MediaDetailPage() {
                       )}
                     </div>
                     {s.caption && <div className="mt-1 text-muted-foreground">{s.caption}</div>}
+                    {s.forward && (
+                      <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                        <Forward className="size-3" />
+                        <span>
+                          转发自{forwardOriginLabel(s.forward.originType)}：
+                          {[
+                            s.forward.chatTitle,
+                            s.forward.senderName,
+                            s.forward.chatUsername && `@${s.forward.chatUsername}`,
+                          ]
+                            .filter(Boolean)
+                            .join(' / ') || '未知'}
+                          {s.forward.chatId != null ? `（${s.forward.chatId}）` : ''}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -9,9 +9,14 @@ import {
 } from 'drizzle-orm/sqlite-core';
 
 export const MEDIA_TYPES = ['video', 'photo', 'audio', 'animation', 'document', 'other'] as const;
-export const AI_STATUSES = ['pending', 'partial', 'done', 'failed', 'skipped'] as const;
+// 'manual'：命中来源跳过策略（或单条开关）→ 不进模型，等人工分类
+export const AI_STATUSES = ['pending', 'partial', 'done', 'failed', 'skipped', 'manual'] as const;
 export const MESSAGE_VIAS = ['bot', 'mtproto'] as const;
 export const TAG_SOURCES = ['user', 'rule', 'llm', 'vision'] as const;
+// 转发来源的四种形态（Telegram forward_origin）
+export const FORWARD_ORIGIN_TYPES = ['user', 'hidden_user', 'chat', 'channel'] as const;
+// 分类体系（六类 + 自定义字符串）的赋值来源
+export const CATEGORY_SOURCES = ['rule', 'llm', 'user'] as const;
 export const EXTRACTED_BY = ['rule', 'llm', 'vision', 'mixed'] as const;
 export const EMBEDDING_KINDS = ['text', 'image'] as const;
 export const JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead'] as const;
@@ -47,6 +52,12 @@ export const mediaAsset = sqliteTable(
     height: integer('height'),
     preferredMessageId: integer('preferred_message_id'),
     aiStatus: text('ai_status', { enum: AI_STATUSES }).notNull().default('pending'),
+    // 分类体系（P3 由规则/AI 赋值，P2 人工分类可覆盖优先级最高）
+    category: text('category'),
+    categorySource: text('category_source', { enum: CATEGORY_SOURCES }),
+    isSensitive: integer('is_sensitive', { mode: 'boolean' }).notNull().default(false),
+    // 单条「跳过 AI」开关：命中来源策略时也会置 1，便于详情页显示与还原
+    aiSkip: integer('ai_skip', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(nowMs),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(nowMs),
   },
@@ -78,6 +89,13 @@ export const telegramMessage = sqliteTable(
     thumbnailFileId: text('thumbnail_file_id'),
     caption: text('caption'),
     captionEntities: text('caption_entities', { mode: 'json' }),
+    // 转发来源（Telegram 四型：user / hidden_user / chat / channel）
+    forwardOriginType: text('forward_origin_type', { enum: FORWARD_ORIGIN_TYPES }),
+    forwardFromChatId: integer('forward_from_chat_id'),
+    forwardFromChatTitle: text('forward_from_chat_title'),
+    forwardFromChatUsername: text('forward_from_chat_username'),
+    forwardSenderUserId: integer('forward_sender_user_id'),
+    forwardSenderName: text('forward_sender_name'),
     messageDate: integer('message_date', { mode: 'timestamp_ms' }).notNull(),
     via: text('via', { enum: MESSAGE_VIAS }).notNull().default('bot'),
     remoteRef: text('remote_ref', { mode: 'json' }),
@@ -90,6 +108,7 @@ export const telegramMessage = sqliteTable(
     index('ix_msg_asset').on(t.mediaAssetId),
     index('ix_msg_unique').on(t.fileUniqueId),
     index('ix_msg_date').on(t.messageDate),
+    index('ix_msg_forward_chat').on(t.forwardOriginType, t.forwardFromChatId),
   ],
 );
 

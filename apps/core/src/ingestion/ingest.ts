@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { resolveAiPolicy } from '../ai/routing.js';
 import type { AppContext } from '../context.js';
 import { mediaAsset, mediaMetadata, mediaTag, telegramMessage } from '../database/schema.js';
 import { buildDedupeKey } from '../metadata/dedupe.js';
@@ -6,7 +7,7 @@ import { rebuildSearchDoc } from '../metadata/rebuild-search-doc.js';
 import { extractHashtags, parseFilename } from '../metadata/rule-parser.js';
 import { filterTags, pruneAssetTags } from '../metadata/tag-policy.js';
 import { cleanRuleTitle } from '../metadata/title-policy.js';
-import type { IncomingMessage } from '../telegram/types.js';
+import type { ForwardOriginType, IncomingMessage } from '../telegram/types.js';
 
 export const PARSER_VERSION = 'rule-v1';
 
@@ -16,6 +17,26 @@ export interface IngestResult {
   mergedByDedupe: boolean;
   assetId: number;
   messageRowId: number;
+}
+
+/** IncomingMessage.forward → telegram_message 的 forward_* 列 */
+function forwardColumns(msg: IncomingMessage): {
+  forwardOriginType: ForwardOriginType | null;
+  forwardFromChatId: number | null;
+  forwardFromChatTitle: string | null;
+  forwardFromChatUsername: string | null;
+  forwardSenderUserId: number | null;
+  forwardSenderName: string | null;
+} {
+  const f = msg.forward;
+  return {
+    forwardOriginType: f?.originType ?? null,
+    forwardFromChatId: f?.chatId ?? null,
+    forwardFromChatTitle: f?.chatTitle ?? null,
+    forwardFromChatUsername: f?.chatUsername ?? null,
+    forwardSenderUserId: f?.senderUserId ?? null,
+    forwardSenderName: f?.senderName ?? null,
+  };
 }
 
 export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResult {
@@ -33,11 +54,13 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
       )
       .get();
     if (existing) {
-      // file_id 会随时间失效，重复投递时顺手刷新（file_unique_id 才是去重锚点）
+      // file_id 会随时间失效，重复投递时顺手刷新（file_unique_id 才是去重锚点）；
+      // 转发来源字段也一并回填（旧版本入库时没有这些列）
       db.update(telegramMessage)
         .set({
           fileId: msg.media.fileId,
           thumbnailFileId: existing.thumbnailFileId ?? msg.media.thumbnailFileId ?? null,
+          ...forwardColumns(msg),
         })
         .where(eq(telegramMessage.id, existing.id))
         .run();
@@ -134,6 +157,7 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
         thumbnailFileId: msg.media.thumbnailFileId ?? null,
         caption: caption ?? null,
         captionEntities: msg.captionEntities ?? null,
+        ...forwardColumns(msg),
         messageDate: new Date(msg.messageDate),
         via: 'bot',
         isPrimary,
@@ -163,9 +187,20 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
         .run();
     }
 
-    // AI 富化：启用时入队（同 asset 去重）；未启用时尝试直接入队向量化；都不可用则标记 skipped
+    // AI 介入分流器：命中「跳过 AI」来源策略 → 完全不进模型，直接进人工分类队列。
+    // 只对新建 asset 生效——已富化的 asset 被黑名单来源二次转发时，不应被降级。
+    const policy = resolveAiPolicy(ctx, msg.forward);
+    let manualReview = false;
+
     if (assetCreated) {
-      if (ctx.ai.enrichEnabled) {
+      if (policy.skip) {
+        manualReview = true;
+        db.update(mediaAsset)
+          .set({ aiStatus: 'manual', aiSkip: true, updatedAt: new Date() })
+          .where(eq(mediaAsset.id, asset.id))
+          .run();
+      } else if (ctx.ai.enrichEnabled) {
+        // AI 富化：启用时入队（同 asset 去重）
         ctx.queue.enqueue(
           'ai.enrich',
           { mediaId: asset.id },
@@ -197,6 +232,13 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
       { mediaId: asset.id, deduped: mergedByDedupe },
       'bot',
     );
+    if (manualReview) {
+      bus.emit(
+        'media.manual_review',
+        { mediaId: asset.id, sourceKey: policy.matchedKey ?? null },
+        'bot',
+      );
+    }
 
     return {
       duplicateDelivery: false,

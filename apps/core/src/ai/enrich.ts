@@ -32,7 +32,7 @@ export interface VisionEnrichment {
   mood?: string[];
 }
 
-type AiStatus = 'pending' | 'partial' | 'done' | 'failed' | 'skipped';
+type AiStatus = 'pending' | 'partial' | 'done' | 'failed' | 'skipped' | 'manual';
 
 const MAX_COMMENT = 1;
 
@@ -439,8 +439,13 @@ function applyEnrichment(
   // 低价值过滤 / 多来源去重 / 上限截断（含来源群名）
   pruneAssetTags(ctx, assetId);
 
+  // AI 真的跑出结果时，清掉「跳过 AI」标记（语义：ai_skip=1 ⇔ 当前被排除在 AI 之外）
   db.update(mediaAsset)
-    .set({ aiStatus: status, updatedAt: new Date() })
+    .set({
+      aiStatus: status,
+      aiSkip: status === 'done' || status === 'partial' ? false : asset.aiSkip,
+      updatedAt: new Date(),
+    })
     .where(eq(mediaAsset.id, assetId))
     .run();
 

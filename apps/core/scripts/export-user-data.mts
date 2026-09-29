@@ -19,7 +19,7 @@ interface ExportPayload {
   schema: number;
   exportedAt: string;
   dataDir: string;
-  counts: { userTags: number; annotations: number; settings: number };
+  counts: { userTags: number; annotations: number; settings: number; userDecisions: number };
   userTags: {
     assetId: number;
     assetTitle: string | null;
@@ -35,6 +35,17 @@ interface ExportPayload {
     createdAt: number;
   }[];
   settings: { key: string; value: unknown; updatedAt: number }[];
+  /** 人工做出的分类/敏感/AI 策略决定（同样无法从 Telegram 重建） */
+  userDecisions: {
+    assetId: number;
+    assetTitle: string | null;
+    fileUniqueId: string;
+    category: string | null;
+    categorySource: string | null;
+    isSensitive: boolean;
+    aiSkip: boolean;
+    updatedAt: number;
+  }[];
 }
 
 const userTags = dbHandle.sqlite
@@ -54,6 +65,25 @@ const annotations = dbHandle.sqlite
      ORDER BY n.id`,
   )
   .all() as ExportPayload['annotations'];
+
+const userDecisions = dbHandle.sqlite
+  .prepare(
+    `SELECT id AS assetId, canonical_title AS assetTitle, file_unique_id AS fileUniqueId,
+            category, category_source AS categorySource, is_sensitive AS isSensitive,
+            ai_skip AS aiSkip, updated_at AS updatedAt
+     FROM media_asset
+     WHERE category_source = 'user' OR is_sensitive = 1 OR ai_skip = 1
+     ORDER BY id`,
+  )
+  .all()
+  .map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      ...row,
+      isSensitive: row.isSensitive === 1,
+      aiSkip: row.aiSkip === 1,
+    };
+  }) as ExportPayload['userDecisions'];
 
 const settingsRows = dbHandle.sqlite
   .prepare(`SELECT key, value, updated_at AS updatedAt FROM settings ORDER BY key`)
@@ -78,10 +108,12 @@ const payload: ExportPayload = {
     userTags: userTags.length,
     annotations: annotations.length,
     settings: settings.length,
+    userDecisions: userDecisions.length,
   },
   userTags,
   annotations,
   settings,
+  userDecisions,
 };
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -94,6 +126,6 @@ dbHandle.close();
 
 console.log(`用户数据已导出：${outPath}`);
 console.log(
-  `  用户标签 ${payload.counts.userTags} 条 · 注解 ${payload.counts.annotations} 条 · 设置 ${payload.counts.settings} 项`,
+  `  用户标签 ${payload.counts.userTags} 条 · 注解 ${payload.counts.annotations} 条 · 设置 ${payload.counts.settings} 项 · 人工分类/敏感决定 ${payload.counts.userDecisions} 条`,
 );
 console.log('  提示：这些是唯一无法从 Telegram 重建的数据，建议定期导出并异地保存。');

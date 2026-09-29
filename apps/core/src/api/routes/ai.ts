@@ -142,7 +142,7 @@ export function registerAiRoutes(app: AppServer, ctx: AppContext): void {
   });
 
   app.get('/api/inbox', async (): Promise<InboxResponse> => {
-    const group = (status: 'pending' | 'partial' | 'failed' | 'done'): MediaListItem[] =>
+    const group = (status: 'pending' | 'partial' | 'failed' | 'done' | 'manual'): MediaListItem[] =>
       queryMedia(ctx.sqlite, {
         filters: { aiStatus: status },
         limit: 50,
@@ -153,6 +153,7 @@ export function registerAiRoutes(app: AppServer, ctx: AppContext): void {
       partial: group('partial'),
       failed: group('failed'),
       done: group('done'),
+      manual: group('manual'),
     };
   });
 }

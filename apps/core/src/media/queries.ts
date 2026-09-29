@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
 import type {
   AnnotationItem,
+  ForwardInfo,
   JobItem,
   JobStatus,
   MediaDetail,
@@ -34,6 +35,7 @@ interface ListRow {
   width: number | null;
   height: number | null;
   ai_status: string;
+  ai_skip: number;
   created_at: number;
   file_unique_id: string;
   quality: string | null;
@@ -47,7 +49,7 @@ interface ListRow {
 
 const LIST_SELECT = `
 SELECT a.id, a.canonical_title, a.type, a.mime, a.size, a.duration_sec, a.width, a.height,
-       a.ai_status, a.created_at, a.file_unique_id,
+       a.ai_status, a.ai_skip, a.created_at, a.file_unique_id,
        m.quality, m.year, m.title_norm, m.file_name,
        (SELECT COUNT(*) FROM telegram_message tm WHERE tm.media_asset_id = a.id) AS source_count,
        (SELECT tm.thumbnail_file_id FROM telegram_message tm
@@ -92,6 +94,26 @@ function mapListRow(row: ListRow): MediaListItem {
       : [],
     hasThumbnail: row.primary_thumb !== null,
     createdAt: row.created_at,
+    aiSkip: row.ai_skip === 1,
+  };
+}
+
+function mapForward(s: {
+  forwardOriginType: string | null;
+  forwardFromChatId: number | null;
+  forwardFromChatTitle: string | null;
+  forwardFromChatUsername: string | null;
+  forwardSenderUserId: number | null;
+  forwardSenderName: string | null;
+}): ForwardInfo | null {
+  if (!s.forwardOriginType) return null;
+  return {
+    originType: s.forwardOriginType as ForwardInfo['originType'],
+    chatId: s.forwardFromChatId,
+    chatTitle: s.forwardFromChatTitle,
+    chatUsername: s.forwardFromChatUsername,
+    senderUserId: s.forwardSenderUserId,
+    senderName: s.forwardSenderName,
   };
 }
 
@@ -241,6 +263,7 @@ export function getMediaDetail(ctx: AppContext, id: number): MediaDetail | null 
     messageDate: s.messageDate.getTime(),
     via: s.via,
     isPrimary: s.isPrimary,
+    forward: mapForward(s),
   }));
 
   const annotationItems: AnnotationItem[] = annotations.map((a) => ({

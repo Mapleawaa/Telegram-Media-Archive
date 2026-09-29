@@ -8,7 +8,9 @@ import { registerJobsRoutes } from './routes/jobs.js';
 import { registerMediaRoutes, type ServerDeps } from './routes/media.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSettingsRoutes } from './routes/settings.js';
+import { registerSourcesRoutes } from './routes/sources.js';
 import { registerStatsRoutes } from './routes/stats.js';
+import { registerTagsRoutes } from './routes/tags.js';
 import { registerWs, WsHub } from './ws.js';
 
 const startedAt = Date.now();
@@ -54,6 +56,8 @@ export async function createServer(ctx: AppContext, deps: ServerDeps) {
   registerSettingsRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
   registerAiRoutes(app, ctx);
+  registerSourcesRoutes(app, ctx);
+  registerTagsRoutes(app, ctx);
 
   return app;
 }

@@ -15,12 +15,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { api, getCoreUrl, setCoreUrl } from '@/lib/api';
+import { formatRelative } from '@/lib/format';
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings });
   const caps = useQuery({ queryKey: ['ai-capabilities'], queryFn: api.aiCapabilities });
+  const sources = useQuery({ queryKey: ['sources'], queryFn: api.sourcesForward });
 
   const [coreUrl, setCoreUrlDraft] = useState(getCoreUrl());
   const [targetChat, setTargetChat] = useState('');
@@ -54,6 +57,29 @@ export function SettingsPage() {
     onSuccess: (res) => toast.success(`已入队 ${res.enqueued}/${res.total} 条向量化任务`),
     onError: (err) => toast.error(err instanceof Error ? err.message : '入队失败'),
   });
+
+  const toggleSource = useMutation({
+    mutationFn: ({ key, skip }: { key: string; skip: boolean }) => {
+      const current = new Set(sources.data?.skipSources ?? []);
+      if (skip) current.add(key);
+      else current.delete(key);
+      return api.patchSetting(SETTING_KEYS.aiSkipSources, [...current]);
+    },
+    onSuccess: (_res, vars) => {
+      toast.success(vars.skip ? '该来源不再进入 AI，直接进待分类' : '该来源恢复走 AI');
+      void queryClient.invalidateQueries({ queryKey: ['sources'] });
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['inbox'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '保存失败'),
+  });
+
+  const SOURCE_TYPE_LABEL: Record<string, string> = {
+    channel: '频道',
+    chat: '群组',
+    user: '用户',
+    name: '隐藏用户名',
+  };
 
   const capRows = [
     { key: 'chat', label: '文本（Chat）', env: 'AI_CHAT_MODEL' },
@@ -215,6 +241,68 @@ export function SettingsPage() {
               内容未变化的媒体会走缓存不重复计费；维度变化时自动重建向量表。
             </span>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">来源与 AI 策略</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            关闭某个来源的开关后，来自它的内容<span className="text-foreground">不进模型</span>
+            （不审核、不打标签），直接进入 Inbox「待分类」由你手工归类。适合会被外部 AI
+            内容审核拒答的收藏。
+          </p>
+          {sources.isPending && <div className="text-xs text-muted-foreground">加载中…</div>}
+          {sources.data && sources.data.items.length === 0 && (
+            <div className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+              还没有观察到转发来源。从别的频道/群转发一条媒体到归档群后，这里会出现它。
+            </div>
+          )}
+          <div className="space-y-1.5">
+            {sources.data?.items.map((item) => {
+              const skipped = sources.data.skipSources.includes(item.key);
+              const label = item.title ?? item.name ?? item.username ?? item.key;
+              return (
+                <div
+                  key={item.key}
+                  className="flex items-center gap-3 rounded-md border bg-card px-3 py-2"
+                >
+                  <Badge variant="outline" className="shrink-0 text-[10px]">
+                    {SOURCE_TYPE_LABEL[item.type] ?? item.type}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium">{label}</div>
+                    <div className="truncate font-mono text-[10px] text-muted-foreground">
+                      {item.key} · {item.count} 条
+                      {item.skippedCount > 0 ? ` · 已跳过 ${item.skippedCount}` : ''} ·{' '}
+                      {formatRelative(item.lastSeenAt)}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={
+                        skipped ? 'text-[11px] text-amber-600' : 'text-[11px] text-muted-foreground'
+                      }
+                    >
+                      {skipped ? '跳过 AI' : '走 AI'}
+                    </span>
+                    <Switch
+                      checked={!skipped}
+                      disabled={toggleSource.isPending}
+                      onCheckedChange={(checked) => toggleSource.mutate({ key: item.key, skip: !checked })}
+                      aria-label={`${label} 是否走 AI`}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            说明：Telegram 的转发来源分四种。若某条「转发自群」但原发送者未隐藏，来源会记成
+            <span className="font-mono"> user:&lt;id&gt;</span> 而非群——此时可到该媒体详情页用「跳过 AI」逐个处理。
+          </p>
         </CardContent>
       </Card>
 

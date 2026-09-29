@@ -1,7 +1,10 @@
 import type {
   AiCapabilitiesResponse,
+  AiPolicyRequest,
   AiRunDetail,
   AiRunItem,
+  ClassifyRequest,
+  ClassifyResponse,
   ForwardRequest,
   ForwardResponse,
   HealthResponse,
@@ -13,7 +16,9 @@ import type {
   Page,
   SearchRequest,
   SearchResponse,
+  SourcesForwardResponse,
   StatsResponse,
+  TagTopResponse,
 } from '@tma/shared';
 
 const CORE_URL_KEY = 'tma.coreUrl';
@@ -129,6 +134,19 @@ export const api = {
     }),
   inbox: () => request<InboxResponse>('/api/inbox'),
   aiRuns: (limit = 50) => request<{ items: AiRunItem[] }>(`/api/ai/runs?limit=${limit}`),
+  sourcesForward: () => request<SourcesForwardResponse>('/api/sources/forward'),
+  tagsTop: (source = 'user', limit = 20) =>
+    request<TagTopResponse>(`/api/tags/top${queryString({ source, limit })}`),
+  classify: (id: number, body: ClassifyRequest) =>
+    request<ClassifyResponse>(`/api/media/${id}/classify`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  setAiPolicy: (id: number, body: AiPolicyRequest) =>
+    request<{ ok: true; mediaId: number; skip: boolean; aiStatus: string; jobId?: number | null }>(
+      `/api/media/${id}/ai-policy`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   aiRunDetail: (id: number) => request<AiRunDetail>(`/api/ai/runs/${id}`),
   thumbnailUrl: (id: number) => `${getCoreUrl()}/api/media/${id}/thumbnail`,
   wsUrl: () => `${getCoreUrl().replace(/^http/, 'ws')}/ws`,

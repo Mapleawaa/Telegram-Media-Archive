@@ -101,6 +101,17 @@ export class JobQueue {
     return info.changes > 0;
   }
 
+  /** 取消某媒体的未完成作业（「跳过 AI」时用，避免 AI 任务在用户决定后被领走） */
+  cancelForMedia(mediaId: number, reason: string): number {
+    const info = this.sqlite
+      .prepare(
+        `UPDATE jobs SET status = 'dead', finished_at = ?, error = ?
+         WHERE status IN ('pending', 'running') AND json_extract(payload, '$.mediaId') = ?`,
+      )
+      .run(Date.now(), reason, mediaId);
+    return info.changes;
+  }
+
   resetStale(staleMs = STALE_RUNNING_MS): number {
     const now = Date.now();
     const info = this.sqlite

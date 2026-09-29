@@ -3,6 +3,7 @@
  * 之后用 TMA_DATA_DIR=.data-demo CORE_PORT=8788 启动 core 即可预览完整 UI。
  */
 import path from 'node:path';
+import { SETTING_KEYS } from '@tma/shared';
 import { pino } from 'pino';
 import { AiGateway } from '../src/ai/gateway.js';
 import { loadConfig } from '../src/config.js';
@@ -12,6 +13,7 @@ import { mediaAnnotation, mediaTag } from '../src/database/schema.js';
 import { EventBus } from '../src/events/bus.js';
 import { ingestMessage } from '../src/ingestion/ingest.js';
 import { JobQueue } from '../src/jobs/queue.js';
+import { setSetting } from '../src/settings/store.js';
 import type { IncomingMessage } from '../src/telegram/types.js';
 
 process.env.TG_BOT_TOKEN ||= 'demo:0000000000000000000000000000000000';
@@ -51,10 +53,20 @@ function msg(partial: Partial<IncomingMessage> & { media: IncomingMessage['media
   };
 }
 
+// 演示「来源与 AI 策略」：拉黑一个频道来源，其内容不进模型、直接进「待分类」
+const BLACKLISTED_CHANNEL = -100555;
+setSetting(ctx, SETTING_KEYS.aiSkipSources, [`channel:${BLACKLISTED_CHANNEL}`]);
+
 const samples: IncomingMessage[] = [
   msg({
     messageId: 1001,
     caption: '4K 绝命毒师 在线播放',
+    forward: {
+      originType: 'channel',
+      chatId: -100111,
+      chatTitle: '影视资源频道',
+      chatUsername: 'media_channel',
+    },
     media: {
       kind: 'video',
       fileId: 'f1',
@@ -71,6 +83,7 @@ const samples: IncomingMessage[] = [
   msg({
     messageId: 1002,
     caption: '那个很压抑的赛博朋克片',
+    forward: { originType: 'user', senderUserId: 880088, senderName: '考拉小姐' },
     media: {
       kind: 'video',
       fileId: 'f2',
@@ -87,6 +100,7 @@ const samples: IncomingMessage[] = [
   msg({
     messageId: 1003,
     caption: '中文命名的剧集',
+    forward: { originType: 'chat', chatId: -100222, chatTitle: '资源分享群' },
     media: {
       kind: 'video',
       fileId: 'f3',
@@ -211,6 +225,30 @@ const samples: IncomingMessage[] = [
       height: 720,
       thumbnailFileId: 't11',
     },
+    forward: { originType: 'hidden_user', senderName: '匿名分享者' },
+  }),
+  // 命中黑名单来源：不进模型，直接进「待分类」（附言 hashtag 成为预填候选标签）
+  msg({
+    messageId: 1012,
+    caption: '#学习资料 #收藏 日本的学习资料',
+    forward: {
+      originType: 'channel',
+      chatId: BLACKLISTED_CHANNEL,
+      chatTitle: '云汐的文件',
+      chatUsername: 'yunxi_files',
+    },
+    media: {
+      kind: 'video',
+      fileId: 'f12',
+      fileUniqueId: 'u12',
+      fileName: 'lesson-material.S01E02.1080p.mkv',
+      mime: 'video/x-matroska',
+      size: 1_288_490_188,
+      durationSec: 3600,
+      width: 1920,
+      height: 1080,
+      thumbnailFileId: 't12',
+    },
   }),
 ];
 
@@ -234,9 +272,17 @@ ingestMessage(
   }),
 );
 
-// 给第 1 条加用户标签与注解
-ctx.db.insert(mediaTag).values({ mediaAssetId: 1, tag: '收藏', source: 'user' }).run();
-ctx.db.insert(mediaTag).values({ mediaAssetId: 1, tag: '剧集', source: 'user' }).run();
+// 给第 1 条加用户标签与注解（onConflictDoNothing：脚本可重复执行）
+ctx.db
+  .insert(mediaTag)
+  .values({ mediaAssetId: 1, tag: '收藏', source: 'user' })
+  .onConflictDoNothing()
+  .run();
+ctx.db
+  .insert(mediaTag)
+  .values({ mediaAssetId: 1, tag: '剧集', source: 'user' })
+  .onConflictDoNothing()
+  .run();
 ctx.db.insert(mediaAnnotation).values({ mediaAssetId: 1, rawText: '这个是值得收藏的' }).run();
 ctx.sqlite
   .prepare(`INSERT INTO jobs (type, payload, status, max_attempts, available_at, created_at, attempts)

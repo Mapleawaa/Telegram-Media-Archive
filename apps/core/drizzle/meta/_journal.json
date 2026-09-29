@@ -15,6 +15,13 @@
       "when": 1790608310437,
       "tag": "0001_fts5",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790669390027,
+      "tag": "0002_salty_the_leader",
+      "breakpoints": true
     }
   ]
 }
