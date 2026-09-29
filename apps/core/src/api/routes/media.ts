@@ -14,9 +14,16 @@ import {
   type Page,
 } from '@tma/shared';
 import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import type { AppServer } from '../types.js';
 import type { AppContext } from '../../context.js';
-import { mediaAnnotation, mediaAsset, mediaTag } from '../../database/schema.js';
+import {
+  mediaAnnotation,
+  mediaAsset,
+  mediaTag,
+  telegramMessage,
+} from '../../database/schema.js';
+import { reparseAsset } from '../../metadata/reparse.js';
 import { getMediaDetail, queryMedia } from '../../media/queries.js';
 import { rebuildSearchDoc } from '../../metadata/rebuild-search-doc.js';
 import { normalizeTag } from '../../metadata/tag-policy.js';
@@ -235,6 +242,115 @@ export function registerMediaRoutes(
     };
   });
 
+  /**
+   * 设为主源（P5-1 / B6）：决定详情页展示、缩略图与转发的默认来源。
+   * 一个资产只有一条 is_primary；切换是原子操作。
+   */
+  app.post('/api/media/:id/primary', async (req, reply) => {
+    const id = parseId(req.params);
+    if (id === null) return reply.status(400).send({ error: 'invalid_id' });
+    const body = z.object({ messageId: z.coerce.number().int() }).parse(req.body ?? {});
+
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, id)).get();
+    if (!asset) return reply.status(404).send({ error: 'not_found' });
+    const target = ctx.db
+      .select()
+      .from(telegramMessage)
+      .where(and(eq(telegramMessage.mediaAssetId, id), eq(telegramMessage.id, body.messageId)))
+      .get();
+    if (!target) return reply.status(404).send({ error: 'source_not_found' });
+
+    ctx.sqlite.transaction(() => {
+      ctx.db
+        .update(telegramMessage)
+        .set({ isPrimary: false })
+        .where(eq(telegramMessage.mediaAssetId, id))
+        .run();
+      ctx.db
+        .update(telegramMessage)
+        .set({ isPrimary: true })
+        .where(eq(telegramMessage.id, body.messageId))
+        .run();
+      ctx.db
+        .update(mediaAsset)
+        .set({ preferredMessageId: body.messageId, updatedAt: new Date() })
+        .where(eq(mediaAsset.id, id))
+        .run();
+    })();
+
+    rebuildSearchDoc(ctx, id);
+    ctx.bus.emit('media.updated', { mediaId: id, reason: 'primary_changed' }, 'user');
+    return { ok: true, mediaId: id, primaryMessageId: body.messageId };
+  });
+
+  /**
+   * 手动改标题（P5-1 / B6）：写 canonical_title 并锁定（title_source='user'）。
+   * 之后规则重解析与 AI 富化都不得覆盖——人工决定优先。
+   */
+  app.patch('/api/media/:id/title', async (req, reply) => {
+    const id = parseId(req.params);
+    if (id === null) return reply.status(400).send({ error: 'invalid_id' });
+    const body = z.object({ title: z.string().trim().min(1).max(200) }).parse(req.body ?? {});
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, id)).get();
+    if (!asset) return reply.status(404).send({ error: 'not_found' });
+
+    ctx.db
+      .update(mediaAsset)
+      .set({ canonicalTitle: body.title, titleSource: 'user', updatedAt: new Date() })
+      .where(eq(mediaAsset.id, id))
+      .run();
+    rebuildSearchDoc(ctx, id);
+    ctx.bus.emit('media.updated', { mediaId: id, reason: 'title_changed' }, 'user');
+    return { ok: true, mediaId: id, title: body.title };
+  });
+
+  /**
+   * 软删除（P5-1 / B6）：列表/分类夹/统计不再出现，作业被撤掉；
+   * **不做物理删除**——Telegram 才是事实源，本地记录只是派生数据。
+   */
+  app.post('/api/media/:id/delete', async (req, reply) => {
+    const id = parseId(req.params);
+    if (id === null) return reply.status(400).send({ error: 'invalid_id' });
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, id)).get();
+    if (!asset) return reply.status(404).send({ error: 'not_found' });
+    if (asset.deletedAt) return { ok: true, mediaId: id, alreadyDeleted: true };
+
+    ctx.queue.cancelForMedia(id, '媒体已软删除');
+    ctx.db
+      .update(mediaAsset)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(mediaAsset.id, id))
+      .run();
+    ctx.bus.emit('media.updated', { mediaId: id, reason: 'deleted' }, 'user');
+    return { ok: true, mediaId: id, deleted: true };
+  });
+
+  /** 恢复软删除的媒体 */
+  app.post('/api/media/:id/restore', async (req, reply) => {
+    const id = parseId(req.params);
+    if (id === null) return reply.status(400).send({ error: 'invalid_id' });
+    const asset = ctx.db.select().from(mediaAsset).where(eq(mediaAsset.id, id)).get();
+    if (!asset) return reply.status(404).send({ error: 'not_found' });
+
+    ctx.db
+      .update(mediaAsset)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(mediaAsset.id, id))
+      .run();
+    ctx.bus.emit('media.updated', { mediaId: id, reason: 'restored' }, 'user');
+    return { ok: true, mediaId: id, restored: true };
+  });
+
+  /** 重新解析（P5-2 / B9）：单条重跑确定性规则（不碰 AI 产物） */
+  app.post('/api/media/:id/reparse', async (req, reply) => {
+    const id = parseId(req.params);
+    if (id === null) return reply.status(400).send({ error: 'invalid_id' });
+    const result = reparseAsset(ctx, id);
+    if (!result.ok) return reply.status(400).send({ error: 'reparse_skipped', message: result.reason });
+    ctx.bus.emit('media.updated', { mediaId: id, reason: 'reparsed' }, 'user');
+    return { ok: true, mediaId: id, changed: result.changed, titleChanged: result.titleChanged };
+  });
+
   app.post('/api/media/:id/annotate', async (req, reply) => {
     const id = parseId(req.params);
     if (id === null) return reply.status(400).send({ error: 'invalid_id' });
@@ -271,10 +387,53 @@ export function registerMediaRoutes(
     }
     const mode = body.mode ?? getSetting<'forward' | 'copy'>(ctx, SETTING_KEYS.forwardMode) ?? 'copy';
 
-    const source = detail.sources.find((s) => s.isPrimary) ?? detail.sources[0];
+    // 选源（P5-3 / B13）：多来源时允许指定要转发的来源；缺省用主源
+    const source = body.sourceMessageId
+      ? (detail.sources.find((s) => s.id === body.sourceMessageId) ??
+        detail.sources.find((s) => s.isPrimary) ??
+        detail.sources[0])
+      : (detail.sources.find((s) => s.isPrimary) ?? detail.sources[0]);
     if (!source) {
       await reply.status(404).send({ error: 'no_source', message: '该媒体没有 Telegram 来源消息' });
       return;
+    }
+
+    // 相册整组转发（P5-3 / B13）：按组内时间顺序逐条发送
+    if (body.album) {
+      const groupId = ctx.sqlite
+        .prepare(`SELECT media_group_id AS g FROM telegram_message WHERE id = ?`)
+        .get(source.id) as { g: string | null } | undefined;
+      if (!groupId?.g) {
+        await reply
+          .status(400)
+          .send({ error: 'not_album', message: '这条媒体不在相册组里，无法整组转发' });
+        return;
+      }
+      const members = ctx.sqlite
+        .prepare(
+          `SELECT a.id AS mediaId, tm.chat_id AS chatId, tm.message_id AS messageId
+           FROM telegram_message tm
+           JOIN media_asset a ON a.id = tm.media_asset_id
+           WHERE tm.media_group_id = ? AND a.deleted_at IS NULL
+           ORDER BY tm.message_date ASC, tm.id ASC`,
+        )
+        .all(groupId.g) as { mediaId: number; chatId: number; messageId: number }[];
+
+      const items: { mediaId: number; chatId: number; messageId: number }[] = [];
+      for (const m of members) {
+        const r = await deps.tg.sendMedia(
+          { chatId: m.chatId, messageId: m.messageId },
+          targetChatId,
+          mode,
+        );
+        items.push({ mediaId: m.mediaId, chatId: r.chatId, messageId: r.messageId });
+        ctx.bus.emit(
+          'telegram.message.forwarded',
+          { mediaId: m.mediaId, chatId: r.chatId, messageId: r.messageId, mode, album: true },
+          'user',
+        );
+      }
+      return { ok: true, chatId: targetChatId, messageId: items.at(-1)?.messageId ?? 0, mode, album: true, count: items.length, items };
     }
 
     const result = await deps.tg.sendMedia(

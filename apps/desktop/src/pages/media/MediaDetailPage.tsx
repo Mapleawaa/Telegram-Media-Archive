@@ -6,14 +6,17 @@ import {
   ExternalLink,
   Forward,
   Lock,
+  Pencil,
   RefreshCw,
+  RotateCcw,
   Send,
   Sparkles,
   Star,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { MediaDetail } from '@tma/shared';
 import { ForwardDialog } from '@/components/media/ForwardDialog';
@@ -108,6 +111,10 @@ export function MediaDetailPage() {
   const [tagDraft, setTagDraft] = useState('');
   const [annotationDraft, setAnnotationDraft] = useState('');
   const [forwardOpen, setForwardOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const navigate = useNavigate();
 
   const detail = useQuery({
     queryKey: ['media', id],
@@ -159,6 +166,45 @@ export function MediaDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '设置失败'),
+  });
+
+  // P5-1：标题锁定在用户手里，规则与 AI 都不再覆盖
+  const setTitle = useMutation({
+    mutationFn: (title: string) => api.setTitle(id, title),
+    onSuccess: () => {
+      setEditingTitle(false);
+      toast.success('标题已更新（之后 AI / 规则不会再覆盖它）');
+      invalidate();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '更新失败'),
+  });
+
+  const setPrimary = useMutation({
+    mutationFn: (messageId: number) => api.setPrimary(id, messageId),
+    onSuccess: () => {
+      toast.success('已设为主源');
+      invalidate();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '设置失败'),
+  });
+
+  const reparse = useMutation({
+    mutationFn: () => api.reparse(id),
+    onSuccess: (res) => {
+      toast.success(res.changed ? '已按最新规则重新解析' : '规则结果无变化');
+      invalidate();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '重解析失败'),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteMedia(id),
+    onSuccess: () => {
+      toast.success('已移出媒体库（软删除，Telegram 里的原件不受影响）');
+      void queryClient.invalidateQueries();
+      void navigate('/library');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '删除失败'),
   });
 
   if (detail.isPending) {
@@ -249,6 +295,16 @@ export function MediaDetailPage() {
             >
               <Sparkles className="size-4" /> AI 分析
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              title="重跑文件名解析（规则），不碰 AI 产物、不花 token"
+              onClick={() => reparse.mutate()}
+              disabled={reparse.isPending}
+            >
+              <RotateCcw className="size-4" /> 重新解析
+            </Button>
           </div>
 
           <label
@@ -287,9 +343,54 @@ export function MediaDetailPage() {
         <div className="min-w-0 space-y-5">
           <div className="min-w-0">
             <div className="flex items-start gap-3">
-              <h1 className="min-w-0 flex-1 text-[26px] font-semibold leading-tight tracking-tight">
-                {d.title}
-              </h1>
+              {editingTitle ? (
+                <form
+                  className="flex min-w-0 flex-1 gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (titleDraft.trim()) setTitle.mutate(titleDraft.trim());
+                  }}
+                >
+                  <Input
+                    autoFocus
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    placeholder="新的标题"
+                  />
+                  <Button size="sm" type="submit" disabled={!titleDraft.trim() || setTitle.isPending}>
+                    保存
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    onClick={() => {
+                      setEditingTitle(false);
+                      setTitleDraft('');
+                    }}
+                  >
+                    取消
+                  </Button>
+                </form>
+              ) : (
+                <h1 className="min-w-0 flex-1 text-[26px] font-semibold leading-tight tracking-tight">
+                  {d.title}
+                </h1>
+              )}
+              {!editingTitle ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="mt-1 size-8 shrink-0"
+                  title={d.titleSource === 'user' ? '已手动改过标题（AI/规则不会再覆盖）' : '手动改标题'}
+                  onClick={() => {
+                    setTitleDraft(d.title);
+                    setEditingTitle(true);
+                  }}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              ) : null}
               {d.isSensitive ? (
                 <Badge variant="destructive" className="mt-1 shrink-0 text-[10px]">
                   敏感
@@ -380,6 +481,18 @@ export function MediaDetailPage() {
                         <a href={url} target="_blank" rel="noreferrer" className="text-primary">
                           <ExternalLink className="size-3" />
                         </a>
+                      )}
+                      {!s.isPrimary && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 shrink-0 px-2 text-[10px]"
+                          title="设为主源：决定缩略图与转发的默认来源"
+                          onClick={() => setPrimary.mutate(s.id)}
+                          disabled={setPrimary.isPending}
+                        >
+                          设为主源
+                        </Button>
                       )}
                     </div>
                     {s.caption && <div className="mt-1 text-muted-foreground">{s.caption}</div>}
@@ -473,8 +586,39 @@ export function MediaDetailPage() {
             </Fold>
           )}
 
-          <div className="text-[11px] text-muted-foreground">
-            播放仍在 Telegram：<Link to="/library" className="text-primary">返回媒体库</Link>
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+            <span>
+              播放仍在 Telegram：<Link to="/library" className="text-primary">返回媒体库</Link>
+            </span>
+            <span className="ml-auto flex items-center gap-2">
+              {confirmDelete ? (
+                <>
+                  <span className="text-destructive">确认移出媒体库？</span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-7"
+                    onClick={() => remove.mutate()}
+                    disabled={remove.isPending}
+                  >
+                    <Trash2 className="size-3" /> 确认删除
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7" onClick={() => setConfirmDelete(false)}>
+                    取消
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-muted-foreground"
+                  title="软删除：列表不再显示，Telegram 里的原件不受影响"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="size-3" /> 移出媒体库
+                </Button>
+              )}
+            </span>
           </div>
         </div>
       </div>
@@ -484,6 +628,8 @@ export function MediaDetailPage() {
         open={forwardOpen}
         onOpenChange={setForwardOpen}
         onForwarded={invalidate}
+        sources={d.sources}
+        albumCount={d.albumCount}
       />
     </div>
   );

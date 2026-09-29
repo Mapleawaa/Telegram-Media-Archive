@@ -17,6 +17,8 @@ export const TAG_SOURCES = ['user', 'rule', 'llm', 'vision'] as const;
 export const FORWARD_ORIGIN_TYPES = ['user', 'hidden_user', 'chat', 'channel'] as const;
 // 分类体系（六类 + 自定义字符串）的赋值来源
 export const CATEGORY_SOURCES = ['rule', 'llm', 'user'] as const;
+// 标题来源（P5-1）：谁最后一次写 canonical_title（'user' 即锁定）
+export const TITLE_SOURCES = ['rule', 'llm', 'vision', 'user'] as const;
 export const EXTRACTED_BY = ['rule', 'llm', 'vision', 'mixed'] as const;
 export const EMBEDDING_KINDS = ['text', 'image'] as const;
 export const JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead'] as const;
@@ -59,6 +61,10 @@ export const mediaAsset = sqliteTable(
     isSensitive: integer('is_sensitive', { mode: 'boolean' }).notNull().default(false),
     // 单条「跳过 AI」开关：命中来源策略时也会置 1，便于详情页显示与还原
     aiSkip: integer('ai_skip', { mode: 'boolean' }).notNull().default(false),
+    // 标题来源（P5-1）：'user' = 用户手动改过，规则与 AI 都不得再覆盖
+    titleSource: text('title_source', { enum: TITLE_SOURCES }),
+    // 软删除（P5-1）：列表/分类夹/统计一律排除；不做物理删除（Telegram 才是事实源）
+    deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(nowMs),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(nowMs),
   },

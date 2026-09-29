@@ -393,12 +393,17 @@ function applyEnrichment(
   const aiTitle =
     sanitizeAiTitle(textEnrichment?.title) ?? deriveTitleFromDescription(visionEnrichment?.description);
   const ruleTitle = meta?.titleNorm ?? null;
-  if (aiTitle && (isJunkTitle(ruleTitle) || isJunkTitle(asset.canonicalTitle))) {
+
+  // P5-1：用户手动改过标题（title_source='user'）→ 规则与 AI 一律不得覆盖；
+  // 这是「人工决定优先」原则在标题上的体现（与分类的 category_source='user' 同理）。
+  const titleLocked = asset.titleSource === 'user';
+  if (!titleLocked && aiTitle && (isJunkTitle(ruleTitle) || isJunkTitle(asset.canonicalTitle))) {
     db.update(mediaAsset)
       .set({ canonicalTitle: aiTitle, updatedAt: new Date() })
       .where(eq(mediaAsset.id, assetId))
       .run();
   } else if (
+    !titleLocked &&
     !aiTitle &&
     isJunkTitle(ruleTitle) &&
     isBadAiTitleLike(asset.canonicalTitle)

@@ -12,9 +12,11 @@
     "dev:core": "pnpm -F @tma/core dev",
     "dev:desktop": "pnpm -F @tma/desktop tauri dev",
     "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint apps packages",
     "test": "pnpm -r test"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.86.0"
   }
 }

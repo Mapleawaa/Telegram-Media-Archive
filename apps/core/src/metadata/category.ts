@@ -291,7 +291,7 @@ export function categoryCounts(ctx: AppContext): Map<string, number> {
   const rows = ctx.sqlite
     .prepare(
       `SELECT COALESCE(category, '__none__') AS k, COUNT(*) AS n
-       FROM media_asset GROUP BY k`,
+       FROM media_asset WHERE deleted_at IS NULL GROUP BY k`,
     )
     .all() as { k: string; n: number }[];
   return new Map(rows.map((r) => [r.k, r.n]));

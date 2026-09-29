@@ -38,6 +38,10 @@ export type CategorySource = (typeof CATEGORY_SOURCES)[number];
 /** 归一化分类字符串（自定义分类允许，但长度受限） */
 export const CategoryValueSchema = z.string().trim().min(1).max(32);
 
+/** 标题来源（'user' 即锁定：规则与 AI 不再覆盖 canonical_title） */
+export const TITLE_SOURCES = ['rule', 'llm', 'vision', 'user'] as const;
+export type TitleSource = (typeof TITLE_SOURCES)[number];
+
 export interface MediaListItem {
   id: number;
   title: string;
@@ -60,6 +64,8 @@ export interface MediaListItem {
   category: string | null;
   /** 分类赋值来源（决定后续能否被覆盖：user 不可被 rule/llm 覆盖） */
   categorySource: CategorySource | null;
+  /** 标题来源（'user' 表示手动改过，前端据此提示「不会再被 AI 覆盖」） */
+  titleSource: TitleSource | null;
   /** 敏感标记（P4 隐私模式消费） */
   isSensitive: boolean;
   /** Telegram 相册组 id（同组媒体相邻渲染 + 相册角标） */
@@ -188,6 +194,10 @@ export interface SearchResponse {
 export const ForwardRequestSchema = z.object({
   targetChatId: z.coerce.number().int().optional(),
   mode: z.enum(['forward', 'copy']).optional(),
+  /** 多来源时指定要转发的来源消息（telegram_message.id）；缺省用主源 */
+  sourceMessageId: z.coerce.number().int().optional(),
+  /** 相册整组转发（P5-3 / B13）：按组内顺序逐条发送 */
+  album: z.boolean().optional(),
 });
 export type ForwardRequest = z.infer<typeof ForwardRequestSchema>;
 
@@ -196,6 +206,10 @@ export interface ForwardResponse {
   chatId: number;
   messageId: number;
   mode: 'forward' | 'copy';
+  /** album=true 时：逐条发送的结果 */
+  album?: boolean;
+  count?: number;
+  items?: { mediaId: number; chatId: number; messageId: number }[];
 }
 
 export const TagRequestSchema = z.object({
@@ -364,6 +378,23 @@ export interface LibrarySection {
 export interface LibrarySectionsResponse {
   sections: LibrarySection[];
   total: number;
+}
+
+// ---- P5-4 见过的 chat（转发目标下拉） ----
+
+export interface SeenChatItem {
+  chatId: number;
+  chatTitle: string | null;
+  chatType: string | null;
+  /** 该 chat 里 Bot 见过的消息数（越大越可信） */
+  count: number;
+  lastSeenAt: number;
+  /** 归档群本身：转发目标不该选它 */
+  isArchive: boolean;
+}
+
+export interface SeenChatsResponse {
+  items: SeenChatItem[];
 }
 
 // ---- P3 标签压缩作业 ----

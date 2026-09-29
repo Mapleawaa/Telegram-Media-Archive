@@ -6,6 +6,7 @@ import type {
   ClassifyRequest,
   ClassifyResponse,
   ConsolidateTagsResponse,
+  SeenChatsResponse,
   ForwardRequest,
   ForwardResponse,
   HealthResponse,
@@ -153,6 +154,40 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
   aiRunDetail: (id: number) => request<AiRunDetail>(`/api/ai/runs/${id}`),
+  // ---- P5 详情页动作 ----
+  setPrimary: (id: number, messageId: number) =>
+    request<{ ok: true; mediaId: number; primaryMessageId: number }>(
+      `/api/media/${id}/primary`,
+      { method: 'POST', body: JSON.stringify({ messageId }) },
+    ),
+  setTitle: (id: number, title: string) =>
+    request<{ ok: true; mediaId: number; title: string }>(`/api/media/${id}/title`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+  deleteMedia: (id: number) =>
+    request<{ ok: true; mediaId: number; deleted: boolean }>(`/api/media/${id}/delete`, {
+      method: 'POST',
+    }),
+  restoreMedia: (id: number) =>
+    request<{ ok: true; mediaId: number; restored: boolean }>(`/api/media/${id}/restore`, {
+      method: 'POST',
+    }),
+  reparse: (id: number) =>
+    request<{ ok: true; mediaId: number; changed: boolean; titleChanged: boolean }>(
+      `/api/media/${id}/reparse`,
+      { method: 'POST' },
+    ),
+  reparseAll: () =>
+    request<{ ok: true; total: number; changed: number; titleChanged: number; tookMs: number }>(
+      '/api/admin/reparse-all',
+      { method: 'POST' },
+    ),
+  clearThumbnails: () =>
+    request<{ ok: true; removed: number; dir: string }>('/api/admin/clear-thumbnails', {
+      method: 'POST',
+    }),
+  chats: () => request<SeenChatsResponse>('/api/chats'),
   thumbnailUrl: (id: number) => `${getCoreUrl()}/api/media/${id}/thumbnail`,
   wsUrl: () => `${getCoreUrl().replace(/^http/, 'ws')}/ws`,
 };

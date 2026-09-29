@@ -14,10 +14,11 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅ → P3 ✅ → P4 ✅（主体完成，待用户实机微调）→ P5（下一步）**。
+功能里程碑 M0/M1/M3/M4 完成；**「地基整固」P1 ✅ P2 ✅ P3 ✅ P4 ✅ P5 ✅ 全部完成（2026-09-29）**。
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
 P4 = Desktop UI 重设计（影音墙）：深色优先 + 霞鹜文楷 + 海报卡（三种封面排列）+ Hero/货架首页 + 分类 chips/筛选 + 海报式详情页 + 悬停/右键/快捷键 + 隐私模式，见 `docs/handoff/P4-desktop-ui.md`。
+P5 = 细节与运维收口：设为主源 / 软删除 / 手动改标题（锁定）/ 规则重解析 / 转发选源与整组 / 见过 chat 下拉 / 缩略图清理 / 日志按天落盘 / oxlint / ErrorBoundary，见 `docs/handoff/P5-details-ops.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
 真机库 25 条媒体（分类已全量回填：adult 12 / gallery 7 / other 5 / anime 1；`is_sensitive` 13 条；标签 122 条、均值 4.88）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
@@ -46,6 +47,7 @@ telegram-media-archive/
 │  │     │  └─ bot/                # bot-client.ts（grammY+代理）/ extract.ts（消息→媒体）/ thumbnail.ts
 │  │     ├─ ingestion/ingest.ts    # 幂等入库事务（去重→资产→消息→标签→分类→入队→事件）
 │  │     ├─ metadata/              # rule-parser（文件名解析）/ dedupe / title-policy / tag-policy
+│  │     │                          # / reparse.ts（P5 规则重解析）/ category.ts（P3 分类）
 │  │     │                          # / category.ts（P3 分类：规则+优先级 user>llm>rule）
 │  │     │                          # / rebuild-search-doc（搜索文档+FTS 同步）
 │  │     ├─ ai/                    # types（Provider 接口）/ openai-compatible / mock
@@ -59,7 +61,7 @@ telegram-media-archive/
 │  │     ├─ events/bus.ts          # 事件总线（写 audit_events + 推 WS）
 │  │     ├─ settings/store.ts      # settings 键值（转发目标、AI 跳过来源等）
 │  │     └─ api/                   # server.ts（Fastify 装配）/ ws.ts（WS Hub）
-│  │        └─ routes/             # media / search / jobs / stats / settings / admin / ai
+│  │        └─ routes/             # media / search / jobs / stats / settings / admin / ai / library / sources / tags / chats
 │  │
 │  └─ desktop/                     # 桌面端：Tauri 2 + Vite + React 19 + Tailwind 4 + shadcn
 │     ├─ src-tauri/                # Rust 壳（窗口/sidecar 预留）；tauri.conf.json（devUrl 5173、CSP）
@@ -73,6 +75,7 @@ telegram-media-archive/
 │        ├─ components/
 │        │  ├─ layout/AppShell.tsx # 侧栏导航 + 主题/字体/隐私开关 + 收起侧栏 + 离线横幅
 │        │  ├─ media/{PosterCard,Shelf,PosterGrid,MediaRow,PrivacyNotice}.tsx  # 影音墙：海报卡 / 货架 / 网格(含瀑布流) / 密集行 / 隐私提示
+│        │  └─ ErrorBoundary.tsx    # 全局错误边界（D8）
 │        │  ├─ media/{ForwardDialog,ManualClassifyDialog}.tsx
 │        │  └─ ui/                 # shadcn 组件（button/card/badge/dialog/select/tabs…）
 │        └─ pages/                 # home / library / media / search / inbox / ai / settings
@@ -95,7 +98,7 @@ telegram-media-archive/
 └─ .gitignore                      # 关键：.env、.data*、target、session 永不入库
 ```
 
-运行期产物（不入库）：`apps/core/.data/`（真实库 archive.db + thumbnails + exports）、`apps/core/.data-demo/`（演示库）、`apps/desktop/src-tauri/target/`（Rust 构建）。
+运行期产物（不入库）：`apps/core/.data/`（真实库 archive.db + thumbnails + exports + logs）、`apps/core/.data-demo/`（演示库）、`apps/desktop/src-tauri/target/`（Rust 构建）。
 
 ## 常用命令
 
@@ -103,8 +106,9 @@ telegram-media-archive/
 eval "$(fnm env --shell bash)"        # 每个新 shell 必须（fnm 管 Node 24.21 / pnpm 12.6）
 
 pnpm -r typecheck                      # 三包类型检查
-pnpm -F @tma/core test                 # 单测（128 个）
-pnpm -F @tma/core smoke                # 端到端冒烟（41 项断言）★改完必跑
+pnpm lint                              # oxlint（0 警告为门禁）
+pnpm -F @tma/core test                 # 单测（132 个）
+pnpm -F @tma/core smoke                # 端到端冒烟（48 项断言）★改完必跑
 pnpm -F @tma/core dev                  # 真实 core（8787）
 pnpm -F @tma/desktop tauri dev         # 桌面端（自动拉起 Vite 5173）
 pnpm -F @tma/core seed:demo            # 重建演示库（.data-demo）
@@ -167,14 +171,15 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 | 真实 core | `127.0.0.1:8787` | `apps/core/.data/archive.db`（真 Telegram + DeepSeek） |
 | 演示 core | `127.0.0.1:8788` | `apps/core/.data-demo/archive.db`（mock AI） |
 | Vite / 桌面 | `localhost:5173` / Tauri 窗口 | 前端 localStorage `tma.coreUrl` 决定连哪个 core |
+| 日志 | `apps/core/.data/logs/` | `core-YYYY-MM-DD.log`（JSON 行，按天轮转，保留 14 天，脱敏） |
 
 ## 下一步
 
-**P5 — 细节与运维收口**（`docs/handoff/NEXT-P2-P5-handoff.md` §8）：B6 详情页动作（设为主源/软删/改标题）、
-B9 重新解析、B13 转发增强、B14 目标 chat 下拉、D1 备份习惯、D3 缩略图缓存清理、D4 日志落盘、D5 lint/format、D8 ErrorBoundary；
-外加 P4 遗留的 B12 应用图标（随 M7 打包）与 Tauri 窗口尺寸记忆。
-
-> P4 主体已完成，**等用户实机微调反馈**；审阅请连真实 core（8787）——演示库是假 TG，没有缩略图。
+**「地基整固」P1-P5 全部收口。** 剩余挂账（等用户拍板）：
+- **B12 应用图标**（随 M7 打包做）
+- **C 类**：MTProto / Agent / Trace 图 / 打包 / 批量操作 / 真实 embedding / 自动重试（用户裁定暂缓）
+- 用户实机体验 P4/P5 新交互，反馈驱动微调
+- Tauri 窗口尺寸记忆（需要 Rust 侧插件，可与 M7 一起）
 
 ## 常用 UI 偏好（前端 localStorage，不进库）
 

@@ -22,6 +22,13 @@
       "when": 1790669390027,
       "tag": "0002_salty_the_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790685175558,
+      "tag": "0003_busy_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

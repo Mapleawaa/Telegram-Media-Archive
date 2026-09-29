@@ -3,6 +3,7 @@ import { ThemeProvider } from 'next-themes';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Toaster } from '@/components/ui/sonner';
 import App from './App';
 import { queryClient } from '@/lib/queryClient';
@@ -15,7 +16,9 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem storageKey="tma.theme">
       <QueryClientProvider client={queryClient}>
         <HashRouter>
-          <App />
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
         </HashRouter>
         <Toaster position="top-right" richColors />
       </QueryClientProvider>

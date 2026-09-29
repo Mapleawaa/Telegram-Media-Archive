@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type {
   AnnotationItem,
   CategorySource,
+  TitleSource,
   ForwardInfo,
   JobItem,
   JobStatus,
@@ -47,6 +48,7 @@ interface ListRow {
   file_name: string | null;
   category: string | null;
   category_source: string | null;
+  title_source: string | null;
   is_sensitive: number;
   media_group_id: string | null;
   album_count: number;
@@ -58,7 +60,7 @@ interface ListRow {
 const LIST_SELECT = `
 SELECT a.id, a.canonical_title, a.type, a.mime, a.size, a.duration_sec, a.width, a.height,
        a.ai_status, a.ai_skip, a.created_at, a.file_unique_id,
-       a.category, a.category_source, a.is_sensitive,
+       a.category, a.category_source, a.title_source, a.is_sensitive,
        m.quality, m.year, m.title_norm, m.file_name,
        (SELECT gm.media_group_id FROM telegram_message gm
          WHERE gm.media_asset_id = a.id AND gm.media_group_id IS NOT NULL
@@ -123,6 +125,7 @@ function mapListRow(row: ListRow): MediaListItem {
     aiSkip: row.ai_skip === 1,
     category: row.category,
     categorySource: (row.category_source as CategorySource | null) ?? null,
+    titleSource: (row.title_source as TitleSource | null) ?? null,
     isSensitive: row.is_sensitive === 1,
     mediaGroupId: row.media_group_id,
     // 非相册（media_group_id IS NULL）时子查询恒为 0 → 归一为 1（契约：1 = 非相册）
@@ -153,7 +156,8 @@ function buildWhere(filters: SearchFilters, cursor: string | undefined): {
   sql: string;
   params: Record<string, unknown>;
 } {
-  const where: string[] = [];
+  // 软删除（P5-1）：一切列表/检索默认排除已删除的媒体
+  const where: string[] = ['a.deleted_at IS NULL'];
   const params: Record<string, unknown> = {};
 
   if (filters.type) {

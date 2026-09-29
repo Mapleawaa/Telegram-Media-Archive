@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { createServer } from './api/server.js';
 import { AiGateway } from './ai/gateway.js';
 import { enrichMedia } from './ai/enrich.js';
@@ -15,7 +16,11 @@ import { BotClient } from './telegram/bot/bot-client.js';
 import { ensureThumbnail } from './telegram/bot/thumbnail.js';
 
 const config = loadConfig();
-const logger = createLogger(config.LOG_LEVEL, process.env.NODE_ENV !== 'production');
+const logger = createLogger(
+  config.LOG_LEVEL,
+  process.env.NODE_ENV !== 'production',
+  config.LOG_FILE_DIR === '' ? undefined : (config.LOG_FILE_DIR ?? path.join(config.dataDir, 'logs')),
+);
 registerSecret(config.TG_BOT_TOKEN);
 registerSecret(config.AI_API_KEY);
 registerSecret(config.AI_CHAT_API_KEY);

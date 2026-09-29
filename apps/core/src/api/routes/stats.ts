@@ -6,14 +6,14 @@ import { queryMedia } from '../../media/queries.js';
 export function registerStatsRoutes(app: AppServer, ctx: AppContext): void {
   app.get('/api/stats', async (): Promise<StatsResponse> => {
     const totalAssets = (
-      ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM media_asset`).get() as { n: number }
+      ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM media_asset WHERE deleted_at IS NULL`).get() as { n: number }
     ).n;
 
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const todayAdded = (
       ctx.sqlite
-        .prepare(`SELECT COUNT(*) AS n FROM media_asset WHERE created_at >= ?`)
+        .prepare(`SELECT COUNT(*) AS n FROM media_asset WHERE deleted_at IS NULL AND created_at >= ?`)
         .get(startOfDay.getTime()) as { n: number }
     ).n;
 

@@ -29,15 +29,15 @@
 | B4c | P2 | 🟡 中文低价值标签没人管（`图片`/`照片`/`转发图片`/`未分类`/`待归档`/`横版`/`竖图`…） | `tag-policy.ts` 原过滤表只覆盖 ASCII | ✅ 已修（2026-09-29）：增 CJK 精确匹配表（类型/占位/方向词）+ reindex；真机 200 → 163 条，均值 6.52 |
 | B3b | P2 | 🟡 派生标题按 24 字硬切，出现「…白西装坐皮椅持杖，身后黑」半截标题 | `deriveTitleFromDescription` | ✅ 已修（2026-09-29）：改为按句中标点断句（上限 28 字）+ reindex 重生成 6 条历史标题 |
 | B5 | P2 | 🟡 相册（`media_group_id` 已记录）在网格中未相邻渲染、无相册标记 | `queries.ts` 未用该字段 | ✅ 已修（P3-3）：列表暴露 `mediaGroupId`/`albumCount`（**1 = 非相册**，子查询 NULL 场景已归一）+ 卡片角标 + `clusterByAlbum()` 稳定相邻聚簇（跨页不拼组） |
-| B6 | P2 | 🟡 无法修改主来源（星标只读）、无法删除媒体、无法手动改标题 | 详情页 | 加「设为主源」「删除（软删）」「编辑标题」三个动作 |
+| B6 | P2 | 🟡 无法修改主来源（星标只读）、无法删除媒体、无法手动改标题 | 详情页 | ✅ 已修（P5-1）：三个动作齐全；改标题会锁定（title_source='user'），AI/规则不再覆盖 |
 | B7 | P2 | 🟡 搜索页无筛选器（Library 有，未复用） | `SearchPage.tsx` | ✅ 已修（P4 第 2 轮）：补上同一套筛选条件（类型/分类/分辨率/年份/标签） |
 | B8 | P2 | 🟡 媒体库无排序切换（只有「最新」；搜索态是相关性） | `queries.ts` order 参数仅 recent/relevance | ✅ 已修（P3-4）：`sort=recent\|updated\|size\|duration\|year` + Library 页排序下拉 |
-| B9 | P2 | 🟡 详情页缺「重新解析（规则）」动作（`parserVersion` 已存但无入口） | 计划 M1 提到 | 单条 + 批量重解析规则 |
+| B9 | P2 | 🟡 详情页缺「重新解析（规则）」动作 | 计划 M1 提到 | ✅ 已修（P5-2）：单条 + 批量（设置页），只重跑确定性规则、不碰 AI 产物 |
 | B10 | P3 | 🟡 深色模式未接入（CSS 有 `.dark` 变量，无切换开关） | `index.css` | ✅ 已修（P4 第 1 轮）：`next-themes` 接线，默认深色，侧栏可切 浅色/深色/跟随系统 |
 | B11 | P3 | 🟡 中文正文字体为 Geist 回退字体；用户偏好霞鹜文楷（LXGW WenKai） | `index.css` | ✅ 已修（P4 第 1 轮）：本地字体包 `lxgw-wenkai-screen-webfont`，默认文楷、可一键切回 Geist |
 | B12 | P3 | 🟡 应用图标仍是 Tauri 默认图标 | `src-tauri/icons/` | 生成/替换应用图标（M7 打包前一并做） |
-| B13 | P3 | 🟡 转发弹窗：不支持相册一次性转发、不支持多来源时选源、失败无自动重试 | `ForwardDialog.tsx` | 相册按 group 顺序逐条发送（M2 一并） |
-| B14 | P3 | 🟡 转发目标 chat 需要手填 ID（引导文案有，但拿到 ID 仍不方便） | 设置页/弹窗 | Bot 记录「见过的 chat」列表（归档群除外）供下拉选择 |
+| B13 | P3 | 🟡 转发弹窗：不支持相册一次性转发、不支持多来源时选源、失败无自动重试 | `ForwardDialog.tsx` | ✅ 已修（P5-3）：多来源选源 + 相册整组按序逐条转发；失败自动重试仍属 C7 暂缓 |
+| B14 | P3 | 🟡 转发目标 chat 需要手填 ID | 设置页/弹窗 | ✅ 已修（P5-4）：`GET /api/chats`（Bot 见过的会话，聚合自消息表）→ 转发弹窗下拉；无其他 chat 时回退手动输入 |
 
 ## C. 功能缺位（原计划内）——⏸ 全部暂缓（用户裁定 2026-09-29：先把地基修好）
 
@@ -58,12 +58,12 @@
 |---|---|---|---|---|
 | D1 | **P1** | 用户数据无备份（用户标签/注解/设置**不可从 Telegram 重建**） | 脚本已跑通（P2 顺带验证）；并已把 P2 新增的人工决定（`category`/`is_sensitive`/`ai_skip`）纳入 `userDecisions` 段 | 余：写进 README 习惯指引（归 P5-8） |
 | D2 | **P1** | 缺一键回归 | 冒烟脚本已写（`scripts/smoke.mts`，含 18 项断言），**尚未跑通验证**（LOG_LEVEL 修正后被打断） | 跑通并纳入「改完代码必跑」流程 |
-| D3 | P2 | 缩略图缓存无清理入口 | 只能手删 `.data/thumbnails` | 加 API + 设置页按钮（维护三件套之一，未做） |
+| D3 | P2 | 缩略图缓存无清理入口 | 只能手删 `.data/thumbnails` | ✅ 已修（P5-5）：`POST /api/admin/clear-thumbnails` + 设置页按钮 |
 | D4 | P2 | 日志只输出 stdout，无文件与轮转 | `logger.ts` | 加文件输出 + 按天/大小轮转（可与 M7 一起） |
-| D5 | P3 | 无 lint/format 配置（无 ESLint/Prettier/EditorConfig） | 全靠手写规范 | 引入 oxlint 或 ESLint + Prettier（低成本高收益） |
+| D5 | P3 | 无 lint/format 配置（无 ESLint/Prettier/EditorConfig） | 全靠手写规范 | ✅ 已修（P5-6）：引入 oxlint（`pnpm lint`，0 警告）；Prettier 未引入（需要时再补） |
 | D6 | P2 | Bot Token 曾出现在开发日志中，未轮换 | 安全项 | BotFather `/revoke` → 更新 `.env` → 重启 core |
 | D7 | P2 | core 常驻依赖终端（关终端即停） | 现状 | 短期用 Windows 计划任务；长期 M7 打包 sidecar |
-| D8 | P3 | 前端无错误边界（单组件异常可能整页白屏） | `main.tsx` 无 ErrorBoundary | 加全局 ErrorBoundary + 友好提示 |
+| D8 | P3 | 前端无错误边界（单组件异常可能整页白屏） | `main.tsx` 无 ErrorBoundary | ✅ 已修（P5-6）：全局 ErrorBoundary（重试 / 刷新两档恢复） |
 | D9 | P3 | DB 体积管理（VACUUM）与磁盘监控 | 当前小 | 破万条后加定期 VACUUM；设置页显示 DB/缓存占用 |
 | D10 | P3 | 无 CI / git hooks | 本地单人开发 | 可选：pre-commit 跑 typecheck + 单测 |
 

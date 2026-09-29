@@ -73,6 +73,21 @@ export function SettingsPage() {
     onError: (err) => toast.error(err instanceof Error ? err.message : '入队失败'),
   });
 
+  const reparseAll = useMutation({
+    mutationFn: api.reparseAll,
+    onSuccess: (res) =>
+      toast.success(
+        `规则重解析完成：${res.changed}/${res.total} 条有变化（标题改写 ${res.titleChanged}，${res.tookMs} ms）`,
+      ),
+    onError: (err) => toast.error(err instanceof Error ? err.message : '重解析失败'),
+  });
+
+  const clearThumbs = useMutation({
+    mutationFn: api.clearThumbnails,
+    onSuccess: (res) => toast.success(`已清理 ${res.removed} 个缩略图缓存文件`),
+    onError: (err) => toast.error(err instanceof Error ? err.message : '清理失败'),
+  });
+
   const toggleSource = useMutation({
     mutationFn: ({ key, skip }: { key: string; skip: boolean }) => {
       const current = new Set(sources.data?.skipSources ?? []);
@@ -409,6 +424,26 @@ export function SettingsPage() {
           </Button>
           <p className="text-[11px] text-muted-foreground">
             让 AI 只依据标签列表做归并/去冗余（不读内容）；用户标签永不被删除或合并。
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => reparseAll.mutate()}
+            disabled={reparseAll.isPending}
+          >
+            {reparseAll.isPending ? '重解析中…' : '按最新规则重解析全部'}
+          </Button>
+          <p className="text-[11px] text-muted-foreground">
+            只重跑确定性规则（不碰 AI 产物、不花 token）；规则升级后用它让存量数据跟上。
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => clearThumbs.mutate()}
+            disabled={clearThumbs.isPending}
+          >
+            {clearThumbs.isPending ? '清理中…' : '清空缩略图缓存'}
+          </Button>
+          <p className="text-[11px] text-muted-foreground">
+            缩略图是派生数据，删了会按需从 Telegram 重新下载；磁盘紧张时再用。
           </p>
         </CardContent>
       </Card>

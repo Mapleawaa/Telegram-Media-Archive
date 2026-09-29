@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import type { ConsolidateTagsResponse } from '@tma/shared';
+import { reparseAsset } from '../../metadata/reparse.js';
 import type { AppContext } from '../../context.js';
 import { mediaAsset, mediaMetadata, mediaTag } from '../../database/schema.js';
 import { backfillRuleCategory } from '../../metadata/category.js';
@@ -54,12 +57,13 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
 
       // 2) 历史坏标题清理（模型拒答句被落库的情况）+ 标签治理 + 搜索文档重建
       const ids = (
-        ctx.sqlite.prepare(`SELECT id FROM media_asset ORDER BY id`).all() as { id: number }[]
+        ctx.sqlite.prepare(`SELECT id FROM media_asset WHERE deleted_at IS NULL ORDER BY id`).all() as { id: number }[]
       ).map((r) => r.id);
       const titleRows = ctx.sqlite
         .prepare(
           `SELECT a.id, a.canonical_title AS title, m.title_norm AS titleNorm, m.summary AS summary
-           FROM media_asset a LEFT JOIN media_metadata m ON m.media_asset_id = a.id`,
+           FROM media_asset a LEFT JOIN media_metadata m ON m.media_asset_id = a.id
+           WHERE a.deleted_at IS NULL`,
         )
         .all() as {
         id: number;
@@ -151,7 +155,7 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       });
     }
     const ids = (
-      ctx.sqlite.prepare(`SELECT id FROM media_asset ORDER BY id`).all() as { id: number }[]
+      ctx.sqlite.prepare(`SELECT id FROM media_asset WHERE deleted_at IS NULL ORDER BY id`).all() as { id: number }[]
     ).map((r) => r.id);
 
     let enqueued = 0;
@@ -181,7 +185,9 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
     }
     const ids = (
       ctx.sqlite
-        .prepare(`SELECT DISTINCT media_asset_id AS id FROM media_tag ORDER BY id`)
+        .prepare(`SELECT DISTINCT t.media_asset_id AS id
+         FROM media_tag t JOIN media_asset a ON a.id = t.media_asset_id
+         WHERE a.deleted_at IS NULL ORDER BY id`)
         .all() as { id: number }[]
     ).map((r) => r.id);
 
@@ -195,5 +201,61 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       if (jobId !== undefined) enqueued += 1;
     }
     return { ok: true, total: ids.length, enqueued };
+  });
+
+  /**
+   * 批量重解析（P5-2 / B9）：规则升级后全量重跑确定性规则。
+   * 不碰 AI 产物、不花 token；跳过已软删除的媒体。
+   */
+  app.post('/api/admin/reparse-all', async () => {
+    const started = Date.now();
+    const ids = (
+      ctx.sqlite
+        .prepare(`SELECT id FROM media_asset WHERE deleted_at IS NULL ORDER BY id`)
+        .all() as { id: number }[]
+    ).map((r) => r.id);
+
+    let changed = 0;
+    let titleChanged = 0;
+    let skipped = 0;
+    for (const id of ids) {
+      const r = reparseAsset(ctx, id);
+      if (!r.ok) {
+        skipped += 1;
+        continue;
+      }
+      if (r.changed) changed += 1;
+      if (r.titleChanged) titleChanged += 1;
+    }
+    return {
+      ok: true,
+      total: ids.length,
+      changed,
+      titleChanged,
+      skipped,
+      tookMs: Date.now() - started,
+    };
+  });
+
+  /**
+   * 清空缩略图缓存（P5-5 / D3）：维护三件套之一。
+   * 只删 <dataDir>/thumbnails 下的 .jpg（派生数据，可随时从 Telegram 重新下载）。
+   */
+  app.post('/api/admin/clear-thumbnails', async () => {
+    const dir = path.join(ctx.config.dataDir, 'thumbnails');
+    if (!fs.existsSync(dir)) return { ok: true, removed: 0, dir };
+
+    let removed = 0;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.toLowerCase().endsWith('.jpg')) continue;
+      const file = path.join(dir, name);
+      try {
+        fs.rmSync(file, { force: true });
+        removed += 1;
+      } catch {
+        // 单个文件删不掉（被占用）就跳过，不中断
+      }
+    }
+    return { ok: true, removed, dir };
   });
 }

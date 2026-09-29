@@ -15,6 +15,8 @@ const EnvSchema = z.object({
   CORE_PORT: z.coerce.number().int().positive().default(8787),
   TMA_DATA_DIR: z.string().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  // 日志落盘目录（P5-6 / D4）。缺省落到 <dataDir>/logs；显式给空串可关闭落盘
+  LOG_FILE_DIR: z.string().optional(),
   AI_BASE_URL: z.string().url().optional(),
   AI_API_KEY: z.string().optional(),
   AI_PROVIDER: z.enum(['auto', 'none', 'mock', 'openai']).default('auto'),

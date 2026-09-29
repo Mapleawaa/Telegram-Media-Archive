@@ -11,6 +11,7 @@ import { createServer } from '../src/api/server.js';
 import { AiGateway } from '../src/ai/gateway.js';
 import { enrichMedia } from '../src/ai/enrich.js';
 import { consolidateTags } from '../src/ai/consolidate.js';
+import { reparseAsset } from '../src/metadata/reparse.js';
 import { embedAsset } from '../src/ai/embedding.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
@@ -468,6 +469,128 @@ check(
   consolidateBatch.statusCode === 200 && consolidateBody.total >= 3 && consolidateBody.enqueued >= 1,
   `total=${consolidateBody.total} enqueued=${consolidateBody.enqueued}`,
 );
+
+// ---- 7. P5 详情动作 / 重新解析 / 见过 chat / 缩略图清理 ----
+// 相册组（2 条）用于整组转发
+const albumA = ingestMessage(
+  ctx,
+  makeMsg({
+    messageId: 301,
+    mediaGroupId: 'album-p5',
+    media: { kind: 'photo', fileId: 'f301', fileUniqueId: 'u301', width: 800, height: 1200, size: 50_000, thumbnailFileId: 't301' },
+  }),
+);
+const albumB = ingestMessage(
+  ctx,
+  makeMsg({
+    messageId: 302,
+    mediaGroupId: 'album-p5',
+    media: { kind: 'photo', fileId: 'f302', fileUniqueId: 'u302', width: 800, height: 1200, size: 51_000, thumbnailFileId: 't302' },
+  }),
+);
+
+// 设为主源：把 albumB 的消息设为 albumA 资产的主源（先并成一个资产？不行——分开的）
+// 这里直接对已有多来源场景做验证：重复投递 albumB 的 media 到 albumA 的资产会并组，
+// 更直接的做法是用 dedupe 合并。改用简单可断言的路径：把主源切到同资产另一条消息。
+void ingestMessage(ctx, makeMsg({
+  messageId: 303,
+  media: { kind: 'video', fileId: 'f303b', fileUniqueId: 'u103b', fileName: video3.media.fileName, size: video3.media.size, durationSec: video3.media.durationSec, thumbnailFileId: 't303' },
+}));
+const detailP5 = await app.inject({ method: 'GET', url: `/api/media/${third.assetId}` });
+const p5Sources = json(detailP5).sources as { id: number; messageId: number; isPrimary: boolean }[];
+const other = p5Sources.find((s) => !s.isPrimary);
+if (other) {
+  const setPrimary = await app.inject({
+    method: 'POST',
+    url: `/api/media/${third.assetId}/primary`,
+    payload: { messageId: other.id },
+  });
+  const detailAfter = await app.inject({ method: 'GET', url: `/api/media/${third.assetId}` });
+  const afterSources = json(detailAfter).sources as { id: number; isPrimary: boolean }[];
+  check(
+    'P5-1 设为主源（is_primary 与 preferred_message_id 切换）',
+    setPrimary.statusCode === 200 &&
+      afterSources.find((s) => s.id === other.id)?.isPrimary === true &&
+      afterSources.filter((s) => s.isPrimary).length === 1,
+  );
+}
+
+// 手动改标题 → title_source='user'，且规则重解析不会再改它
+const setTitle = await app.inject({
+  method: 'PATCH',
+  url: `/api/media/${ingested.assetId}/title`,
+  payload: { title: '我自己的标题' },
+});
+const titleRow = ctx.db.$client
+  .prepare(`SELECT canonical_title AS t, title_source AS src FROM media_asset WHERE id = ?`)
+  .get(ingested.assetId) as { t: string; src: string };
+const reparsed = reparseAsset(ctx, ingested.assetId);
+const titleAfterReparse = ctx.db.$client
+  .prepare(`SELECT canonical_title AS t FROM media_asset WHERE id = ?`)
+  .get(ingested.assetId) as { t: string };
+check(
+  'P5-1 手动改标题并锁定（重解析不覆盖）',
+  setTitle.statusCode === 200 && titleRow.t === '我自己的标题' && titleRow.src === 'user' &&
+    titleAfterReparse.t === '我自己的标题' && reparsed.ok,
+  titleAfterReparse.t,
+);
+
+// 软删除：列表消失 → 恢复 → 回来
+const delTarget = albumB.assetId;
+await app.inject({ method: 'POST', url: `/api/media/${delTarget}/delete` });
+const listedAfterDelete = await app.inject({ method: 'GET', url: '/api/media?limit=50' });
+const stillThere = (json(listedAfterDelete).items as { id: number }[]).some((i) => i.id === delTarget);
+await app.inject({ method: 'POST', url: `/api/media/${delTarget}/restore` });
+const listedAfterRestore = await app.inject({ method: 'GET', url: '/api/media?limit=50' });
+const backAgain = (json(listedAfterRestore).items as { id: number }[]).some((i) => i.id === delTarget);
+check('P5-1 软删除 → 列表消失 → 恢复 → 回来', !stillThere && backAgain, `删除后 ${stillThere ? '还在' : '没了'} · 恢复后 ${backAgain ? '回来了' : '没回来'}`);
+
+// 相册整组转发（P5-3 / B13）
+const albumForward = await app.inject({
+  method: 'POST',
+  url: `/api/media/${albumA.assetId}/forward`,
+  payload: { album: true },
+});
+const albumBody = json(albumForward) as { album?: boolean; count?: number };
+check(
+  'P5-3 相册整组转发（按组内顺序逐条）',
+  albumForward.statusCode === 200 && albumBody.album === true && albumBody.count === 2,
+  `count=${albumBody.count}`,
+);
+
+// 见过的 chat（P5-4 / B14）：先让 Bot 从另一个会话收到一条消息
+void ingestMessage(
+  ctx,
+  makeMsg({
+    chatId: -100888,
+    chatType: 'private',
+    chatTitle: '某个用户',
+    messageId: 401,
+    media: { kind: 'document', fileId: 'f401', fileUniqueId: 'u401', fileName: 'note.txt', size: 100 },
+  }),
+);
+const chats = await app.inject({ method: 'GET', url: '/api/chats' });
+const chatsBody = json(chats) as {
+  items: { chatId: number; isArchive: boolean; count: number }[];
+};
+check(
+  'P5-4 GET /api/chats（见过会话 + 归档群标记）',
+  chats.statusCode === 200 &&
+    chatsBody.items.length >= 2 &&
+    chatsBody.items.some((c) => c.isArchive) &&
+    chatsBody.items.some((c) => !c.isArchive),
+  `${chatsBody.items.length} 个 chat`,
+);
+
+// 批量重解析（P5-2 / B9）
+const reparseAll = await app.inject({ method: 'POST', url: '/api/admin/reparse-all' });
+const reparseBody = json(reparseAll) as { total: number; changed: number };
+check('P5-2 批量规则重解析', reparseAll.statusCode === 200 && reparseBody.total >= 5, `total=${reparseBody.total} changed=${reparseBody.changed}`);
+
+// 缩略图缓存清理（P5-5 / D3）
+const clearThumbs = await app.inject({ method: 'POST', url: '/api/admin/clear-thumbnails' });
+const thumbsBody = json(clearThumbs) as { removed: number };
+check('P5-5 清空缩略图缓存', clearThumbs.statusCode === 200 && thumbsBody.removed >= 0, `removed=${thumbsBody.removed}`);
 
 await app.close();
 dbHandle.close();

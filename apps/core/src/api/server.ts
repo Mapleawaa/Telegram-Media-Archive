@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import type { AppContext } from '../context.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
+import { registerChatsRoutes } from './routes/chats.js';
 import { registerJobsRoutes } from './routes/jobs.js';
 import { registerLibraryRoutes } from './routes/library.js';
 import { registerMediaRoutes, type ServerDeps } from './routes/media.js';
@@ -60,6 +61,7 @@ export async function createServer(ctx: AppContext, deps: ServerDeps) {
   registerAiRoutes(app, ctx);
   registerSourcesRoutes(app, ctx);
   registerTagsRoutes(app, ctx);
+  registerChatsRoutes(app, ctx);
 
   return app;
 }
