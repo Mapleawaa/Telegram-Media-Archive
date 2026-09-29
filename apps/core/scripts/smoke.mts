@@ -12,6 +12,8 @@ import { AiGateway } from '../src/ai/gateway.js';
 import { enrichMedia } from '../src/ai/enrich.js';
 import { consolidateTags } from '../src/ai/consolidate.js';
 import { reparseAsset } from '../src/metadata/reparse.js';
+import { handleBotCommand, readNotifyChatId } from '../src/telegram/bot/commands.js';
+import { createNotifyService } from '../src/telegram/bot/notify.js';
 import { embedAsset } from '../src/ai/embedding.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
@@ -591,6 +593,70 @@ check('P5-2 批量规则重解析', reparseAll.statusCode === 200 && reparseBody
 const clearThumbs = await app.inject({ method: 'POST', url: '/api/admin/clear-thumbnails' });
 const thumbsBody = json(clearThumbs) as { removed: number };
 check('P5-5 清空缩略图缓存', clearThumbs.statusCode === 200 && thumbsBody.removed >= 0, `removed=${thumbsBody.removed}`);
+
+// ---- 8. X1 Bot 私聊命令 + 归档通知 ----
+// 命令：handleBotCommand 与 grammy 解耦，冒烟直接调用（等同私聊收到文本）
+const helpReply = await handleBotCommand({ ctx, ai }, '/help');
+check('X1-2 /help 列出命令', helpReply.includes('/search') && helpReply.includes('/start'));
+
+const statsReply = await handleBotCommand({ ctx, ai }, '/stats');
+check('X1-2 /stats 有总数与分类分布', statsReply.includes('总计') && statsReply.includes('分类：'), statsReply.split('\n')[1]);
+
+const searchReply = await handleBotCommand({ ctx, ai }, '/search season');
+check('X1-2 /search 命中季集关键词', searchReply.includes('《'), searchReply.split('\n')[0]);
+
+const recentReply = await handleBotCommand({ ctx, ai }, '/recent');
+check('X1-2 /recent 列出最近归档', /1\. 《.+》 #\d+/.test(recentReply));
+
+const firstMedia = (json((await app.inject({ method: 'GET', url: '/api/media?limit=1' }))).items as { id: number }[])[0]!;
+const detailReply = await handleBotCommand({ ctx, ai }, `/detail ${firstMedia.id}`);
+check('X1-2 /detail 展示来源与 AI 状态', detailReply.includes('来源') && detailReply.includes('AI 状态'));
+check('X1-2 /detail 不存在的 id 给反馈', (await handleBotCommand({ ctx, ai }, '/detail 999999')).includes('没有找到'));
+
+// 通知：绑定 → 事件 → 去抖 → 发送
+const notifySends: { chatId: number; text: string }[] = [];
+const notify = createNotifyService(ctx, async (chatId, text) => notifySends.push({ chatId, text }));
+await handleBotCommand({ ctx, ai }, '/start', 424242);
+check('X1-1 /start 绑定通知 chat', readNotifyChatId(ctx) === 424242);
+
+const x1Ingest = ingestMessage(
+  ctx,
+  makeMsg({
+    chatId: config.TG_ARCHIVE_CHAT_ID,
+    media: { kind: 'photo', fileId: 'fx1', fileUniqueId: 'ux1', width: 800, height: 1200 },
+  }),
+);
+notify.onEvent({ event: 'media.created', payload: { mediaId: x1Ingest.assetId }, actor: 'bot', ts: Date.now() });
+notify.flushNow();
+await new Promise((r) => setTimeout(r, 20));
+const x1Notice = notifySends.at(-1);
+check(
+  'X1-1 入库通知（归档 + 分类 + AI 状态）',
+  x1Notice !== undefined && x1Notice.chatId === 424242 && x1Notice.text.includes('已归档'),
+  x1Notice?.text.split('\n')[0],
+);
+
+// AI 完成 → 二次通知带新分类
+ctx.db.$client
+  .prepare(`UPDATE media_asset SET category = 'gallery', ai_status = 'done' WHERE id = ?`)
+  .run(x1Ingest.assetId);
+notify.onEvent({ event: 'media.analyzed', payload: { mediaId: x1Ingest.assetId, status: 'done' }, actor: 'agent', ts: Date.now() });
+notify.flushNow();
+await new Promise((r) => setTimeout(r, 20));
+const x1Analyzed = notifySends.at(-1);
+check(
+  'X1-1 AI 完成通知（新分类落库后）',
+  x1Analyzed !== undefined && x1Analyzed.text.includes('AI 整理完成') && x1Analyzed.text.includes('图集'),
+);
+
+// 未绑定 → 静默
+await handleBotCommand({ ctx, ai }, '/stop', 424242);
+const beforeCount = notifySends.length;
+notify.onEvent({ event: 'media.created', payload: { mediaId: x1Ingest.assetId }, actor: 'bot', ts: Date.now() });
+notify.flushNow();
+await new Promise((r) => setTimeout(r, 20));
+check('X1-1 /stop 解绑后通知静默', notifySends.length === beforeCount);
+notify.dispose();
 
 await app.close();
 dbHandle.close();

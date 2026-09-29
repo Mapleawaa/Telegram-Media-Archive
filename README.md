@@ -63,6 +63,10 @@ pnpm -F @tma/core export:user-data     # 导出到 apps/core/.data/exports/
 **日志**：`apps/core/.data/logs/core-YYYY-MM-DD.log`（JSON 行，按天轮转，保留 14 天）。
 排障时 `grep` 这个文件比翻终端快。
 
+**Bot 私聊（X1）**：私聊 Bot 发 `/start` 绑定归档通知——之后往归档群转发媒体，
+入库和 AI 整理完成都会私聊推送（含归类与 AI 状态）；`/search` `/stats` `/recent` `/detail` `/pending`
+可随时查询。`/stop` 关闭通知。
+
 **改完代码的自检顺序**：
 
 ```bash

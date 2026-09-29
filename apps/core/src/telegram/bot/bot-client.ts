@@ -15,7 +15,24 @@ export interface BotClientDeps {
   config: AppConfig;
   logger: Logger;
   onMessage: (msg: IncomingMessage) => void;
+  /**
+   * X1-2 私聊命令处理：收到 /开头的私聊文本时调用，返回的文本回复给用户。
+   * 可选——未提供时私聊命令被忽略（冒烟/测试环境）。
+   */
+  onCommand?: (text: string, chatId: number) => Promise<string>;
 }
+
+/** Telegram 的 Bot 命令菜单（聊天框左侧菜单按钮） */
+const BOT_COMMANDS = [
+  { command: 'search', description: '搜索媒体：/search 关键词' },
+  { command: 'recent', description: '最近归档 5 条' },
+  { command: 'detail', description: '查看单条详情：/detail 媒体ID' },
+  { command: 'stats', description: '媒体库统计' },
+  { command: 'pending', description: '待人工分类的媒体' },
+  { command: 'start', description: '绑定归档通知' },
+  { command: 'stop', description: '关闭归档通知' },
+  { command: 'help', description: '帮助' },
+] as const;
 
 export class BotClient implements TelegramClient {
   readonly kind = 'bot' as const;
@@ -52,6 +69,10 @@ export class BotClient implements TelegramClient {
       },
       'Bot 已连接，开始长轮询',
     );
+    // 命令菜单注册失败不影响归档（例如 token 是无效演示值时）
+    await this.bot.api.setMyCommands([...BOT_COMMANDS]).catch((err) => {
+      this.logger.warn({ err }, 'Bot 命令菜单注册失败（不影响归档）');
+    });
     this.runner = run(this.bot);
   }
 
@@ -67,6 +88,16 @@ export class BotClient implements TelegramClient {
     }
     const sent = await this.bot.api.copyMessage(targetChatId, source.chatId, source.messageId);
     return { chatId: targetChatId, messageId: sent.message_id };
+  }
+
+  /** 发纯文本消息（X1-1 通知与 X1-2 命令回复共用）。失败只记日志，不抛出。 */
+  async sendText(chatId: number, text: string): Promise<void> {
+    try {
+      // 纯文本发送：不指定 parse_mode，避免标题里的下划线/方括号触发实体解析错误
+      await this.bot.api.sendMessage(chatId, text, { link_preview_options: { is_disabled: true } });
+    } catch (err) {
+      this.logger.error({ err, chatId }, 'Bot 发送文本失败');
+    }
   }
 
   async downloadFile(fileId: string, destPath: string): Promise<void> {
@@ -95,6 +126,11 @@ export class BotClient implements TelegramClient {
   }
 
   private handle(msg: Message): void {
+    // X1-2：私聊命令不走归档过滤——用户 /search /stats 等，直接应答
+    if (msg.chat.type === 'private' && typeof msg.text === 'string' && msg.text.startsWith('/')) {
+      void this.handleCommand(msg.text, msg.chat.id);
+      return;
+    }
     if (msg.chat.id !== this.deps.config.TG_ARCHIVE_CHAT_ID) {
       this.logger.debug({ chatId: msg.chat.id, messageId: msg.message_id }, '忽略非归档群消息');
       return;
@@ -105,6 +141,17 @@ export class BotClient implements TelegramClient {
       this.deps.onMessage(incoming);
     } catch (err) {
       this.logger.error({ err, messageId: msg.message_id }, '归档入库失败');
+    }
+  }
+
+  private async handleCommand(text: string, chatId: number): Promise<void> {
+    if (!this.deps.onCommand) return;
+    try {
+      const reply = await this.deps.onCommand(text, chatId);
+      await this.sendText(chatId, reply);
+    } catch (err) {
+      this.logger.error({ err, chatId, text }, '私聊命令处理失败');
+      await this.sendText(chatId, '命令处理出错了，稍后再试或用 /help 查看可用命令。');
     }
   }
 }

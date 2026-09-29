@@ -13,6 +13,8 @@ import { JobQueue } from './jobs/queue.js';
 import { Worker } from './jobs/worker.js';
 import { createLogger, registerSecret } from './logger.js';
 import { BotClient } from './telegram/bot/bot-client.js';
+import { handleBotCommand } from './telegram/bot/commands.js';
+import { createNotifyService } from './telegram/bot/notify.js';
 import { ensureThumbnail } from './telegram/bot/thumbnail.js';
 
 const config = loadConfig();
@@ -72,7 +74,13 @@ const tg = new BotClient({
       );
     }
   },
+  // X1-2：私聊命令（/search /stats …）
+  onCommand: (text, chatId) => handleBotCommand({ ctx, ai }, text, chatId),
 });
+
+// X1-1：归档通知（入库 / AI 完成 / 拉黑 / 失败 → 私聊）。订阅者身份，不阻塞主链路
+const notify = createNotifyService(ctx, (chatId, text) => tg.sendText(chatId, text));
+bus.subscribe((evt) => notify.onEvent(evt));
 
 const worker = new Worker(queue, bus, logger);
 worker.register('ai.enrich', async (payload) => {
@@ -111,6 +119,7 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info(`收到 ${sig}，正在退出…`);
+    notify.dispose();
     worker.stop();
     void tg
       .stop()

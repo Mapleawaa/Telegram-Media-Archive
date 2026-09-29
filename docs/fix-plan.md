@@ -105,3 +105,12 @@ C1 MTProto（MT Photo 阶段再做）· C2 Agent · C3 Trace 图 · C4 打包 ·
 2. ✅ 分类体系 = **电影 / 剧集 / 动漫 / 成人 / 图集 / 其他 + 自定义**
 3. ✅ UI 主题 = **深色优先**（保留浅色可切换）
 4. ✅ 验收节奏 = P1-P3 自测汇报；**P4 UI 必须用户实机审阅后迭代**（不做纯方案讨论）
+
+## X1 — Bot 交互与消息通知 ✅ 完成（2026-09-29，用户追加阶段）
+
+> 收口证据：`docs/handoff/X1-bot-notify.md`。零迁移、零新表（通知目标用 settings 新键 `notify_chat_id`）。
+
+| # | 任务 | 结果 |
+|---|---|---|
+| X1-1 | 归档通知：入库/去重合并/AI 完成/拉黑进人工/AI 最终失败 → 私聊推送，带归类与 AI 状态 | ✅ EventBus 订阅者 + 相册 2s 去抖合并；`/start` 绑定 `/stop` 解绑 |
+| X1-2 | Bot 私聊命令：/search /recent /detail /stats /pending /help /start /stop | ✅ 命令逻辑与 grammy 解耦（纯函数可单测）；私聊不受归档群过滤；Bot 命令菜单注册 |

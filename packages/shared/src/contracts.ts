@@ -361,6 +361,8 @@ export const SETTING_KEYS = {
   embeddingDim: 'embedding_dim',
   /** string[]：命中即进人工分类队列，不进模型 */
   aiSkipSources: 'ai_skip_sources',
+  /** number：Bot 私聊通知的目标 chat id（0/未设置 = 关闭通知）。X1 由 /start /stop 维护 */
+  notifyChatId: 'notify_chat_id',
 } as const;
 
 // ---- P3 分类体系 ----

@@ -14,11 +14,12 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；**「地基整固」P1 ✅ P2 ✅ P3 ✅ P4 ✅ P5 ✅ 全部完成（2026-09-29）**。
+功能里程碑 M0/M1/M3/M4 完成；**「地基整固」P1-P5 全部完成 + 追加阶段 X1（Bot 交互与通知）完成（2026-09-29）**。
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
 P4 = Desktop UI 重设计（影音墙）：深色优先 + 霞鹜文楷 + 海报卡（三种封面排列）+ Hero/货架首页 + 分类 chips/筛选 + 海报式详情页 + 悬停/右键/快捷键 + 隐私模式，见 `docs/handoff/P4-desktop-ui.md`。
 P5 = 细节与运维收口：设为主源 / 软删除 / 手动改标题（锁定）/ 规则重解析 / 转发选源与整组 / 见过 chat 下拉 / 缩略图清理 / 日志按天落盘 / oxlint / ErrorBoundary，见 `docs/handoff/P5-details-ops.md`。
+X1 = Bot 交互与通知：私聊 /search /stats 等命令 + 归档/去重/AI 完成/拉黑/失败 五类私聊通知（/start 绑定），见 `docs/handoff/X1-bot-notify.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
 真机库 25 条媒体（分类已全量回填：adult 12 / gallery 7 / other 5 / anime 1；`is_sensitive` 13 条；标签 122 条、均值 4.88）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
@@ -76,6 +77,11 @@ telegram-media-archive/
 │        │  ├─ layout/AppShell.tsx # 侧栏导航 + 主题/字体/隐私开关 + 收起侧栏 + 离线横幅
 │        │  ├─ media/{PosterCard,Shelf,PosterGrid,MediaRow,PrivacyNotice}.tsx  # 影音墙：海报卡 / 货架 / 网格(含瀑布流) / 密集行 / 隐私提示
 │        │  └─ ErrorBoundary.tsx    # 全局错误边界（D8）
+│  │  ├─ telegram/bot/
+│  │  │  ├─ bot-client.ts          # grammy 客户端：归档群收消息 + 私聊命令分流 + sendText
+│  │  │  ├─ extract.ts             # 媒体/转发来源解析
+│  │  │  ├─ commands.ts            # X1-2 私聊命令（与 grammy 解耦的纯逻辑）
+│  │  │  └─ notify.ts              # X1-1 归档通知（EventBus 订阅 + 相册去抖）
 │        │  ├─ media/{ForwardDialog,ManualClassifyDialog}.tsx
 │        │  └─ ui/                 # shadcn 组件（button/card/badge/dialog/select/tabs…）
 │        └─ pages/                 # home / library / media / search / inbox / ai / settings
@@ -107,8 +113,8 @@ eval "$(fnm env --shell bash)"        # 每个新 shell 必须（fnm 管 Node 24
 
 pnpm -r typecheck                      # 三包类型检查
 pnpm lint                              # oxlint（0 警告为门禁）
-pnpm -F @tma/core test                 # 单测（132 个）
-pnpm -F @tma/core smoke                # 端到端冒烟（48 项断言）★改完必跑
+pnpm -F @tma/core test                 # 单测（151 个）
+pnpm -F @tma/core smoke                # 端到端冒烟（58 项断言）★改完必跑
 pnpm -F @tma/core dev                  # 真实 core（8787）
 pnpm -F @tma/desktop tauri dev         # 桌面端（自动拉起 Vite 5173）
 pnpm -F @tma/core seed:demo            # 重建演示库（.data-demo）
@@ -172,12 +178,14 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 | 演示 core | `127.0.0.1:8788` | `apps/core/.data-demo/archive.db`（mock AI） |
 | Vite / 桌面 | `localhost:5173` / Tauri 窗口 | 前端 localStorage `tma.coreUrl` 决定连哪个 core |
 | 日志 | `apps/core/.data/logs/` | `core-YYYY-MM-DD.log`（JSON 行，按天轮转，保留 14 天，脱敏） |
+| Bot 私聊 | Telegram 里找你的 Bot | `/start` 绑定归档通知；`/help` 看全部命令（X1） |
 
 ## 下一步
 
-**「地基整固」P1-P5 全部收口。** 剩余挂账（等用户拍板）：
+**P1-P5 + X1 全部收口。** 剩余挂账（等用户拍板）：
 - **B12 应用图标**（随 M7 打包做）
 - **C 类**：MTProto / Agent / Trace 图 / 打包 / 批量操作 / 真实 embedding / 自动重试（用户裁定暂缓）
+- 后续以用户实机反馈驱动（Bot 命令/通知的体验微调走 X1 追加
 - 用户实机体验 P4/P5 新交互，反馈驱动微调
 - Tauri 窗口尺寸记忆（需要 Rust 侧插件，可与 M7 一起）
 
