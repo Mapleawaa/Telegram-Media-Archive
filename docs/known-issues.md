@@ -33,8 +33,8 @@
 | B7 | P2 | 🟡 搜索页无筛选器（Library 有，未复用） | `SearchPage.tsx` | 复用 Library 的筛选组件 |
 | B8 | P2 | 🟡 媒体库无排序切换（只有「最新」；搜索态是相关性） | `queries.ts` order 参数仅 recent/relevance | ✅ 已修（P3-4）：`sort=recent\|updated\|size\|duration\|year` + Library 页排序下拉 |
 | B9 | P2 | 🟡 详情页缺「重新解析（规则）」动作（`parserVersion` 已存但无入口） | 计划 M1 提到 | 单条 + 批量重解析规则 |
-| B10 | P3 | 🟡 深色模式未接入（CSS 有 `.dark` 变量，无切换开关） | `index.css` | 加主题切换（跟随系统/手动） |
-| B11 | P3 | 🟡 中文正文字体为 Geist 回退字体；用户偏好霞鹜文楷（LXGW WenKai） | `index.css` | 提供「文楷」字体选项（本地打包字体或 CDN） |
+| B10 | P3 | 🟡 深色模式未接入（CSS 有 `.dark` 变量，无切换开关） | `index.css` | ✅ 已修（P4 第 1 轮）：`next-themes` 接线，默认深色，侧栏可切 浅色/深色/跟随系统 |
+| B11 | P3 | 🟡 中文正文字体为 Geist 回退字体；用户偏好霞鹜文楷（LXGW WenKai） | `index.css` | ✅ 已修（P4 第 1 轮）：本地字体包 `lxgw-wenkai-screen-webfont`，默认文楷、可一键切回 Geist |
 | B12 | P3 | 🟡 应用图标仍是 Tauri 默认图标 | `src-tauri/icons/` | 生成/替换应用图标（M7 打包前一并做） |
 | B13 | P3 | 🟡 转发弹窗：不支持相册一次性转发、不支持多来源时选源、失败无自动重试 | `ForwardDialog.tsx` | 相册按 group 顺序逐条发送（M2 一并） |
 | B14 | P3 | 🟡 转发目标 chat 需要手填 ID（引导文案有，但拿到 ID 仍不方便） | 设置页/弹窗 | Bot 记录「见过的 chat」列表（归档群除外）供下拉选择 |

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Search as SearchIcon } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import type { SearchResponse } from '@tma/shared';
-import { MediaCard } from '@/components/media/MediaCard';
+import { PosterCard } from '@/components/media/PosterCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,9 +75,9 @@ export function SearchPage() {
       )}
 
       {result && result.items.length > 0 && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
           {result.items.map((item) => (
-            <MediaCard key={item.id} item={item} />
+            <PosterCard key={item.id} item={item} />
           ))}
         </div>
       )}

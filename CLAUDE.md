@@ -14,9 +14,10 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅ → P3 ✅（2026-09-29）→ P4（下一步）** → P5。
+功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅ → P3 ✅ → P4 🔄（第 1 轮已出，待用户实机审阅）** → P5。
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
+P4 = Desktop UI 重设计（影音墙，深色优先 + 霞鹜文楷 + 海报卡 + Hero/货架首页），进度见 `docs/handoff/P4-desktop-ui.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
 真机库 25 条媒体（分类已全量回填：adult 12 / gallery 7 / other 5 / anime 1；`is_sensitive` 13 条；标签 122 条、均值 4.88）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
@@ -63,16 +64,17 @@ telegram-media-archive/
 │  └─ desktop/                     # 桌面端：Tauri 2 + Vite + React 19 + Tailwind 4 + shadcn
 │     ├─ src-tauri/                # Rust 壳（窗口/sidecar 预留）；tauri.conf.json（devUrl 5173、CSP）
 │     └─ src/
-│        ├─ main.tsx / App.tsx     # 入口 + HashRouter 路由表
+│        ├─ main.tsx / App.tsx     # 入口（ThemeProvider 深色优先）+ HashRouter 路由表
 │        ├─ lib/api.ts             # ★所有 REST 端点集中在此（前端唯一出口）
 │        ├─ lib/{format,queryClient,utils}.ts
-│        ├─ hooks/useEventStream.ts# WS 事件 → TanStack Query 失效映射
-│        ├─ stores/{ui,connection}.ts  # Zustand：只放 UI 偏好/连接态
+│        ├─ hooks/useEventStream.ts# WS 事件 → TanStack Query 失效映射（含 library-sections）
+│        ├─ stores/{ui,connection,appearance}.ts  # Zustand：UI 偏好 / 连接态 / 主题字体
 │        ├─ components/
-│        │  ├─ layout/AppShell.tsx # 侧边导航 + 离线横幅
-│        │  ├─ media/{MediaCard,ForwardDialog}.tsx
+│        │  ├─ layout/AppShell.tsx # 侧栏导航 + 主题/字体开关 + 离线横幅
+│        │  ├─ media/{PosterCard,Shelf,MediaRow}.tsx  # 影音墙：海报卡 / 横向货架 / 密集行
+│        │  ├─ media/{ForwardDialog,ManualClassifyDialog}.tsx
 │        │  └─ ui/                 # shadcn 组件（button/card/badge/dialog/select/tabs…）
-│        └─ pages/                 # dashboard / library / media / search / inbox / ai / settings
+│        └─ pages/                 # home / library / media / search / inbox / ai / settings
 │
 ├─ packages/shared/                # @tma/shared：zod 契约 + TS 类型 + WS 事件名（前后端同源）
 │  └─ src/{contracts,events,album,index}.ts
@@ -167,8 +169,8 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 
 ## 下一步
 
-**P4 — Desktop UI 重设计（影音墙）**（见 `docs/handoff/NEXT-P2-P5-handoff.md` §7）：
-从「后台管理风」→「桌面影音客户端」（对标 Jellyfin / Emby / Apple TV），深色优先。
-数据入口已就绪：`GET /api/library/sections`（分类夹 + 计数 + 预览图）、
-`MediaListItem.category / isSensitive / albumCount / mediaGroupId`。
-**P4 必须用户实机审阅后迭代**（先出具体版本，不做纯方案讨论）。
+**P4 — Desktop UI 重设计（影音墙）进行中**（进度见 `docs/handoff/P4-desktop-ui.md`）：
+- **第 1 轮已完成**（P4-1 视觉基调 + P4-2 首页）：深色优先主题 + 霞鹜文楷（默认）/ Geist 切换 + 海报卡 + Hero/横向货架首页。
+- **卡在「用户实机审阅」**——按约定必须先请用户在 Tauri 窗口看过再迭代。
+- 后续轮次：P4-3 分类页筛选/排序重做 → P4-4 详情页海报式布局 → P4-5 悬停操作/快捷键 → P4-6 隐私模式 → P4-7 收口。
+- 审阅请连**真实 core（8787）**：演示库是假 TG，海报墙没有缩略图。

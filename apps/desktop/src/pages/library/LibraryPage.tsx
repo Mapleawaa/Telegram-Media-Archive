@@ -3,7 +3,8 @@ import { LayoutGrid, List } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { clusterByAlbum, type MediaListQuery, type MediaType } from '@tma/shared';
-import { MediaCard, MediaRow } from '@/components/media/MediaCard';
+import { MediaRow } from '@/components/media/MediaRow';
+import { PosterCard } from '@/components/media/PosterCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -98,11 +99,11 @@ export function LibraryPage() {
   const filterKeys = Object.values(filters).filter(Boolean).length;
 
   return (
-    <div className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 px-7 py-6">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold">媒体库</h1>
-          <p className="text-xs text-muted-foreground">
+          <h1 className="text-[22px] font-semibold tracking-tight">媒体库</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {query.isSuccess ? `${items.length} 项` : '加载中…'}
             {filterKeys > 0 ? ` · ${filterKeys} 个筛选条件` : ''}
           </p>
@@ -234,9 +235,9 @@ export function LibraryPage() {
       </div>
 
       {query.isPending ? (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-[4/3] rounded-lg" />
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-2/3 rounded-xl" />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -244,9 +245,9 @@ export function LibraryPage() {
           还没有媒体。把想归档的内容转发到归档群，Bot 会自动入库。
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
           {items.map((item) => (
-            <MediaCard key={item.id} item={item} />
+            <PosterCard key={item.id} item={item} />
           ))}
         </div>
       ) : (

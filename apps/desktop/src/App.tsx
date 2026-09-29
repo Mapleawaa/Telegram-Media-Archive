@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from '@/components/layout/AppShell';
 import { useEventStream } from '@/hooks/useEventStream';
 import { AiActivityPage } from '@/pages/ai/AiActivityPage';
-import { DashboardPage } from '@/pages/dashboard/DashboardPage';
+import { HomePage } from '@/pages/home/HomePage';
 import { InboxPage } from '@/pages/inbox/InboxPage';
 import { LibraryPage } from '@/pages/library/LibraryPage';
 import { MediaDetailPage } from '@/pages/media/MediaDetailPage';
@@ -16,7 +16,7 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<DashboardPage />} />
+        <Route index element={<HomePage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="media/:id" element={<MediaDetailPage />} />
         <Route path="search" element={<SearchPage />} />
