@@ -108,6 +108,24 @@ pnpm -F @tma/core db:generate          # 生成 Drizzle 迁移（自定义 SQL �
 演示 core（8788，离线验证、不烧 token）：
 `AI_PROVIDER=mock AI_CHAT_MODEL=mock/chat AI_VLM_MODEL=mock/vision AI_EMBED_MODEL=mock/embed TMA_DATA_DIR="$(pwd)/.data-demo" CORE_PORT=8788 TG_BOT_TOKEN="demo:0" pnpm exec tsx src/index.ts`
 
+## UI 实机核验（无 agent-browser 时用这条）
+
+本机没有 agent-browser，但装了 Chrome。用隔离工作区里的 `playwright-core` + 系统 Chrome 截图，**不用下载 Chromium**：
+
+```bash
+# 一次性准备（已装好，重装才需要）
+mkdir -p ~/.workbuddy/binaries/node/workspace && cd ~/.workbuddy/binaries/node/workspace && npm install playwright-core
+```
+
+脚本**必须放在 `~/.workbuddy/binaries/node/workspace/` 里**（ESM 靠目录向上找 node_modules，`NODE_PATH` 对 ESM 无效），要点：
+
+```js
+const browser = await chromium.launch({ channel: 'chrome', headless: true });
+await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://127.0.0.1:8788')); // 切库
+```
+
+`page.evaluate(fetch(...))` 回查 core API 断言真实状态，比只看截图可靠；截图按业务页命名存 `docs/handoff/assets/P{n}/`。
+
 ## 铁律（Agent 必须遵守）
 
 1. **收口纪律**：每个阶段写 `docs/handoff/P{n}-*.md`，四节 = 目标结论 / 可复现命令与原始输出 / 验收勾选 / 已知问题与偏离+下一入口。
