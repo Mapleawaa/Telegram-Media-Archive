@@ -14,6 +14,15 @@ import { consolidateTags } from '../src/ai/consolidate.js';
 import { reparseAsset } from '../src/metadata/reparse.js';
 import { handleBotCommand, readNotifyChatId } from '../src/telegram/bot/commands.js';
 import { createNotifyService } from '../src/telegram/bot/notify.js';
+import {
+  applyGateCallback,
+  buildCallbackData,
+  categoryKeyboard,
+  parseGateCallback,
+  readGateMode,
+  resolveGateTarget,
+} from '../src/telegram/bot/gate.js';
+import { setSetting } from '../src/settings/store.js';
 import { embedAsset } from '../src/ai/embedding.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
@@ -657,6 +666,78 @@ notify.flushNow();
 await new Promise((r) => setTimeout(r, 20));
 check('X1-1 /stop 解绑后通知静默', notifySends.length === beforeCount);
 notify.dispose();
+
+// ---- 9. X2 归档门控（ask：入库不入队，按钮决定） ----
+check('X2 默认门控为 ask', readGateMode(ctx) === 'ask');
+
+const gateIngest = ingestMessage(
+  ctx,
+  makeMsg({
+    messageId: 501,
+    media: { kind: 'video', fileId: 'fg1', fileUniqueId: 'ug1', fileName: 'Gate.Show.S03E01.1080p.mkv', size: 900, durationSec: 50 },
+  }),
+);
+const jobsAtGateStart = ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'ai.enrich'`).get() as { n: number };
+const gateAsset = ctx.sqlite.prepare(`SELECT ai_status AS s FROM media_asset WHERE id = ?`).get(gateIngest.assetId) as { s: string };
+check(
+  'X2 ask 门控：入库不排队、保持 pending（等用户点按钮）',
+  ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'ai.enrich'`).get()!['n' as never] === jobsAtGateStart.n &&
+    gateAsset.s === 'pending',
+  `新增作业 ${ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'ai.enrich'`).get()!['n' as never]} - 基线 ${jobsAtGateStart.n}`,
+);
+
+// 键盘里的 callback_data 全部能被解析
+const kbData = categoryKeyboard(resolveGateTarget(gateIngest.assetId, null))
+  .inline_keyboard.flat()
+  .map((b) => b.callback_data);
+check('X2 分类键盘 callback_data 均可解析', kbData.every((d) => parseGateCallback(d) !== null));
+
+// 点「是」→ 入队
+const yesRes = applyGateCallback(ctx, buildCallbackData('y', resolveGateTarget(gateIngest.assetId, null)))!;
+const yesJobs = ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'ai.enrich'`).get() as { n: number };
+check(
+  'X2 点「是」→ 入队 AI 富化',
+  yesRes.text.includes('已交给 AI 审核') && yesJobs.n - jobsAtGateStart.n === 1,
+  `${yesRes.text} · 作业 ${yesJobs.n - jobsAtGateStart.n}`,
+);
+
+// 另一条点「否」→ 其他 + user + skipped，再选「游戏」
+const gateIngest2 = ingestMessage(
+  ctx,
+  makeMsg({
+    messageId: 502,
+    media: { kind: 'video', fileId: 'fg2', fileUniqueId: 'ug2', fileName: 'Gate2.Show.S03E02.1080p.mkv', size: 901, durationSec: 51 },
+  }),
+);
+const noTarget = resolveGateTarget(gateIngest2.assetId, null);
+applyGateCallback(ctx, buildCallbackData('n', noTarget));
+const noAsset = ctx.sqlite
+  .prepare(`SELECT category, category_source AS src, ai_status AS s FROM media_asset WHERE id = ?`)
+  .get(gateIngest2.assetId) as { category: string; src: string; s: string };
+check(
+  'X2 点「否」→ 其他（user 锁定）+ skipped',
+  noAsset.category === 'other' && noAsset.src === 'user' && noAsset.s === 'skipped',
+);
+const catRes = applyGateCallback(ctx, buildCallbackData('c:game', noTarget))!;
+const catAsset = ctx.sqlite
+  .prepare(`SELECT category, category_source AS src FROM media_asset WHERE id = ?`)
+  .get(gateIngest2.assetId) as { category: string; src: string };
+check('X2 分类键盘选「游戏」→ user 分类落库', catRes.text.includes('游戏') && catAsset.category === 'game' && catAsset.src === 'user');
+
+// 相册：组目标一次覆盖全组
+const gA = ingestMessage(ctx, makeMsg({ messageId: 511, mediaGroupId: 'grp-gate', media: { kind: 'photo', fileId: 'gp1', fileUniqueId: 'ugp1', width: 10, height: 10 } }));
+const gB = ingestMessage(ctx, makeMsg({ messageId: 512, mediaGroupId: 'grp-gate', media: { kind: 'photo', fileId: 'gp2', fileUniqueId: 'ugp2', width: 10, height: 10 } }));
+applyGateCallback(ctx, buildCallbackData('c:book', resolveGateTarget(gA.assetId, 'grp-gate')));
+const gBAsset = ctx.sqlite.prepare(`SELECT category AS c FROM media_asset WHERE id = ?`).get(gB.assetId) as { c: string };
+const gARow = ctx.sqlite.prepare(`SELECT category AS c, ai_status AS s FROM media_asset WHERE id = ?`).get(gA.assetId) as { c: string; s: string };
+check(
+  'X2 相册组一次归类覆盖全组',
+  gBAsset.c === 'book' && gARow.c === 'book',
+  `A=${gARow.c}/${gARow.s} B=${gBAsset.c}`,
+);
+
+// 恢复 auto，保证后续断言环境不变
+setSetting(ctx, 'ingest_gate_mode', 'auto');
 
 await app.close();
 dbHandle.close();

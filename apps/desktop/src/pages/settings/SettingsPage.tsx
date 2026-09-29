@@ -34,6 +34,12 @@ export function SettingsPage() {
   const setFont = useAppearanceStore((s) => s.setFont);
   const coverMode = useUiStore((s) => s.coverMode);
   const setCoverMode = useUiStore((s) => s.setCoverMode);
+  const gateMode = (settings.data?.settings?.ingest_gate_mode as string | undefined) ?? 'ask';
+  const setGateMode = useMutation({
+    mutationFn: (mode: string) => api.patchSetting('ingest_gate_mode', mode),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    onError: (err) => toast.error(err instanceof Error ? err.message : '保存失败'),
+  });
   const [coreUrl, setCoreUrlDraft] = useState(getCoreUrl());
   const [targetChat, setTargetChat] = useState('');
   const [mode, setMode] = useState<'forward' | 'copy'>('copy');
@@ -381,6 +387,35 @@ export function SettingsPage() {
             </div>
             <p className="text-[11px] text-muted-foreground">
               竖屏 = 2:3 裁切；方形 = 1:1 裁切；原始比例 = 不裁切、高低错落。
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">归档门控（X2）</Label>
+            <div className="flex gap-1 rounded-lg border p-0.5">
+              {(
+                [
+                  { value: 'ask', label: '群里问过我', hint: '入库后 Bot 引用消息询问是否 AI 审核；否则手动归类' },
+                  { value: 'auto', label: '自动 AI', hint: '入库即自动 AI 富化（老行为，来源黑名单仍生效）' },
+                ] as const
+              ).map((o) => (
+                <Button
+                  key={o.value}
+                  size="sm"
+                  variant={gateMode === o.value ? 'secondary' : 'ghost'}
+                  className="h-7 flex-1 text-xs"
+                  title={o.hint}
+                  onClick={() => setGateMode.mutate(o.value)}
+                  disabled={setGateMode.isPending}
+                >
+                  {o.label}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              「群里问过我」：转发进群后 Bot 会引用消息弹出「需要让 AI 审核吗」，选否可直接手动归类。
             </p>
           </div>
 

@@ -17,13 +17,15 @@ import { eq } from 'drizzle-orm';
 import type { AppContext } from '../context.js';
 import { mediaAsset, mediaMetadata, mediaTag } from '../database/schema.js';
 
-/** 分类展示名（六类预设 + 未分类兜底） */
+/** 分类展示名（八类预设 + 未分类兜底） */
 export const CATEGORY_LABELS: Record<string, string> = {
   movie: '电影',
   series: '剧集',
   anime: '动漫',
   adult: '成人',
   gallery: '图集',
+  game: '游戏',
+  book: '图书',
   other: '其他',
   __none__: '未分类',
 };

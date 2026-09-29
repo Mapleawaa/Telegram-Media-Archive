@@ -28,6 +28,8 @@ const CATEGORY_OPTIONS = [
   { value: 'anime', label: '动漫' },
   { value: 'adult', label: '成人' },
   { value: 'gallery', label: '图集' },
+  { value: 'game', label: '游戏' },
+  { value: 'book', label: '图书' },
   { value: 'other', label: '其他' },
 ];
 

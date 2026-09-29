@@ -28,8 +28,26 @@ export const SOURCE_KEY_TYPES = ['channel', 'chat', 'user', 'name'] as const;
 export type SourceKeyType = (typeof SOURCE_KEY_TYPES)[number];
 
 /** 分类体系（六类 + 自定义字符串） */
-export const CATEGORY_PRESETS = ['movie', 'series', 'anime', 'adult', 'gallery', 'other'] as const;
+export const CATEGORY_PRESETS = [
+  'movie',
+  'series',
+  'anime',
+  'adult',
+  'gallery',
+  'game',
+  'book',
+  'other',
+] as const;
 export type CategoryPreset = (typeof CATEGORY_PRESETS)[number];
+
+/** Telegram inline keyboard（X2 门控按钮；结构对齐 Bot API） */
+export interface InlineKeyboardButton {
+  text: string;
+  callback_data: string;
+}
+export interface InlineKeyboard {
+  inline_keyboard: InlineKeyboardButton[][];
+}
 
 /** 分类的赋值来源（优先级：user > llm > rule） */
 export const CATEGORY_SOURCES = ['rule', 'llm', 'user'] as const;
@@ -363,6 +381,12 @@ export const SETTING_KEYS = {
   aiSkipSources: 'ai_skip_sources',
   /** number：Bot 私聊通知的目标 chat id（0/未设置 = 关闭通知）。X1 由 /start /stop 维护 */
   notifyChatId: 'notify_chat_id',
+  /**
+   * 'ask'（默认）| 'auto'：X2 归档门控。
+   * ask = 入库后 Bot 在群里引用消息问「要不要 AI 审核」，点了才入队；
+   * auto = 老行为，入库即自动入队 AI 富化（来源黑名单仍生效）。
+   */
+  ingestGateMode: 'ingest_gate_mode',
 } as const;
 
 // ---- P3 分类体系 ----

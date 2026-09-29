@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createServer } from './api/server.js';
 import { AiGateway } from './ai/gateway.js';
+import { resolveAiPolicy } from './ai/routing.js';
 import { enrichMedia } from './ai/enrich.js';
 import { consolidateTags } from './ai/consolidate.js';
 import { embedAsset } from './ai/embedding.js';
@@ -14,6 +15,12 @@ import { Worker } from './jobs/worker.js';
 import { createLogger, registerSecret } from './logger.js';
 import { BotClient } from './telegram/bot/bot-client.js';
 import { handleBotCommand } from './telegram/bot/commands.js';
+import {
+  applyGateCallback,
+  createPromptScheduler,
+  readGateMode,
+  resolveGateTarget,
+} from './telegram/bot/gate.js';
 import { createNotifyService } from './telegram/bot/notify.js';
 import { ensureThumbnail } from './telegram/bot/thumbnail.js';
 
@@ -57,6 +64,11 @@ const ctx: AppContext = {
   ai,
 };
 
+// 相册成员连发多条消息时，按组去抖、只引用首条提问（send 在运行期才用到 tg，闭包无碍）
+const promptScheduler = createPromptScheduler((chatId, replyTo, target) =>
+  tg.sendGatePrompt(chatId, replyTo, target),
+);
+
 const tg = new BotClient({
   config,
   logger,
@@ -72,10 +84,20 @@ const tg = new BotClient({
         },
         '归档入库',
       );
+      // X2 门控：ask 模式下引用这条消息提问（相册去抖，整组只弹一次）
+      const policy = resolveAiPolicy(ctx, msg.forward);
+      if (ctx.ai.enrichEnabled && !policy.skip && readGateMode(ctx) === 'ask') {
+        promptScheduler.schedule(resolveGateTarget(result.assetId, msg.mediaGroupId), {
+          chatId: msg.chatId,
+          replyToMessageId: msg.messageId,
+        });
+      }
     }
   },
   // X1-2：私聊命令（/search /stats …）
   onCommand: (text, chatId) => handleBotCommand({ ctx, ai }, text, chatId),
+  // X2：门控按钮（要 AI / 手动归类）
+  onGateCallback: (data) => applyGateCallback(ctx, data),
 });
 
 // X1-1：归档通知（入库 / AI 完成 / 拉黑 / 失败 → 私聊）。订阅者身份，不阻塞主链路
@@ -120,6 +142,7 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     shuttingDown = true;
     logger.info(`收到 ${sig}，正在退出…`);
     notify.dispose();
+    promptScheduler.dispose();
     worker.stop();
     void tg
       .stop()

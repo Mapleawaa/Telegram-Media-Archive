@@ -114,3 +114,15 @@ C1 MTProto（MT Photo 阶段再做）· C2 Agent · C3 Trace 图 · C4 打包 ·
 |---|---|---|
 | X1-1 | 归档通知：入库/去重合并/AI 完成/拉黑进人工/AI 最终失败 → 私聊推送，带归类与 AI 状态 | ✅ EventBus 订阅者 + 相册 2s 去抖合并；`/start` 绑定 `/stop` 解绑 |
 | X1-2 | Bot 私聊命令：/search /recent /detail /stats /pending /help /start /stop | ✅ 命令逻辑与 grammy 解耦（纯函数可单测）；私聊不受归档群过滤；Bot 命令菜单注册 |
+
+## X2 — 归档门控 ✅ 完成（2026-09-29，用户追加阶段）
+
+> 收口证据：`docs/handoff/X2-archive-gate.md`。转发进群 → Bot 引用消息问「要不要 AI 审核」：
+> 是=入队富化；否=标「其他」+ 弹分类键盘（成人/游戏/图书/…）手动归。相册整组一问一答。
+> 默认 `ask`；设置页可切回 `auto`。预设分类六类→八类（+游戏/图书）。
+
+| # | 任务 | 结果 |
+|---|---|---|
+| X2-1 | 门控提问（引用消息 + 是/否按钮，相册去抖只弹一次） | ✅ `gate.ts` + `sendGatePrompt`；callback_data ≤64B 组目标 |
+| X2-2 | 「否」流：标其他（user 锁定）+ 分类键盘 + 反悔回 AI | ✅ done 资产保护性跳过；八类预设 |
+| X2-3 | 设置页门控开关（群里问过我 / 自动 AI） | ✅ `ingest_gate_mode`，默认 ask |

@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { SETTING_KEYS } from '@tma/shared';
+import { setSetting } from '../settings/store.js';
 import type { AIProvider } from './types.js';
 import { createTestContext } from '../database/test-utils.js';
 import { mediaAsset, mediaMetadata, mediaTag } from '../database/schema.js';
@@ -90,8 +92,9 @@ describe('enrichMedia', () => {
     expect(jobs.n).toBe(0);
   });
 
-  it('AI 启用：归档时入队 ai.enrich 且跑完 mock 文本+视觉富化', async () => {
+  it('AI 启用（auto 门控）：归档时入队 ai.enrich 且跑完 mock 文本+视觉富化', async () => {
     const ctx = makeCtx({ AI_PROVIDER: 'mock', AI_CHAT_MODEL: 'mock/chat', AI_VLM_MODEL: 'mock/vision' });
+    setSetting(ctx, SETTING_KEYS.ingestGateMode, 'auto');
     const ingested = ingestMessage(ctx, makeMsg());
     expect(ctx.ai.enrichEnabled).toBe(true);
 

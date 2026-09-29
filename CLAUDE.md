@@ -14,12 +14,14 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；**「地基整固」P1-P5 全部完成 + 追加阶段 X1（Bot 交互与通知）完成（2026-09-29）**。
+功能里程碑 M0/M1/M3/M4 完成；**P1-P5 全部完成 + 追加阶段 X1（Bot 通知/命令）、X2（归档门控）完成（2026-09-29）**。
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
 P4 = Desktop UI 重设计（影音墙）：深色优先 + 霞鹜文楷 + 海报卡（三种封面排列）+ Hero/货架首页 + 分类 chips/筛选 + 海报式详情页 + 悬停/右键/快捷键 + 隐私模式，见 `docs/handoff/P4-desktop-ui.md`。
 P5 = 细节与运维收口：设为主源 / 软删除 / 手动改标题（锁定）/ 规则重解析 / 转发选源与整组 / 见过 chat 下拉 / 缩略图清理 / 日志按天落盘 / oxlint / ErrorBoundary，见 `docs/handoff/P5-details-ops.md`。
 X1 = Bot 交互与通知：私聊 /search /stats 等命令 + 归档/去重/AI 完成/拉黑/失败 五类私聊通知（/start 绑定），见 `docs/handoff/X1-bot-notify.md`。
+X2 = 归档门控（**默认流程**）：转发进群后 Bot 引用消息问「要不要 AI 审核」——是=入队；否=标其他+分类键盘手动归；相册整组一问一答；设置页可切回 auto，见 `docs/handoff/X2-archive-gate.md`。
+**分类预设现在是八类**：movie/series/anime/adult/gallery/game/book/other（X2 +游戏/图书）。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
 真机库 25 条媒体（分类已全量回填：adult 12 / gallery 7 / other 5 / anime 1；`is_sensitive` 13 条；标签 122 条、均值 4.88）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
@@ -81,6 +83,7 @@ telegram-media-archive/
 │  │  │  ├─ bot-client.ts          # grammy 客户端：归档群收消息 + 私聊命令分流 + sendText
 │  │  │  ├─ extract.ts             # 媒体/转发来源解析
 │  │  │  ├─ commands.ts            # X1-2 私聊命令（与 grammy 解耦的纯逻辑）
+│  │  │  ├─ gate.ts                # X2 归档门控（提问/按钮决策/分类键盘/去抖，纯逻辑）
 │  │  │  └─ notify.ts              # X1-1 归档通知（EventBus 订阅 + 相册去抖）
 │        │  ├─ media/{ForwardDialog,ManualClassifyDialog}.tsx
 │        │  └─ ui/                 # shadcn 组件（button/card/badge/dialog/select/tabs…）
@@ -113,8 +116,8 @@ eval "$(fnm env --shell bash)"        # 每个新 shell 必须（fnm 管 Node 24
 
 pnpm -r typecheck                      # 三包类型检查
 pnpm lint                              # oxlint（0 警告为门禁）
-pnpm -F @tma/core test                 # 单测（151 个）
-pnpm -F @tma/core smoke                # 端到端冒烟（58 项断言）★改完必跑
+pnpm -F @tma/core test                 # 单测（161 个）
+pnpm -F @tma/core smoke                # 端到端冒烟（65 项断言）★改完必跑
 pnpm -F @tma/core dev                  # 真实 core（8787）
 pnpm -F @tma/desktop tauri dev         # 桌面端（自动拉起 Vite 5173）
 pnpm -F @tma/core seed:demo            # 重建演示库（.data-demo）
@@ -182,7 +185,7 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 
 ## 下一步
 
-**P1-P5 + X1 全部收口。** 剩余挂账（等用户拍板）：
+**P1-P5 + X1 + X2 全部收口。** 剩余挂账（等用户拍板）：
 - **B12 应用图标**（随 M7 打包做）
 - **C 类**：MTProto / Agent / Trace 图 / 打包 / 批量操作 / 真实 embedding / 自动重试（用户裁定暂缓）
 - 后续以用户实机反馈驱动（Bot 命令/通知的体验微调走 X1 追加
@@ -193,3 +196,5 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 
 `tma.theme`（浅/深/系统）· `tma.font`（wenkai/ui）· `tma.coverMode`（portrait/square/natural）·
 `tma.viewMode`（grid/list）· `tma.privacyMode`（0/1）· `tma.sidebarCollapsed`（0/1）
+
+**门控模式**存 settings 表 `ingest_gate_mode`（ask 默认/auto），设置页可切。

@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { resolveAiPolicy } from '../ai/routing.js';
+import { readGateMode } from '../telegram/bot/gate.js';
 import type { AppContext } from '../context.js';
 import { mediaAsset, mediaMetadata, mediaTag, telegramMessage } from '../database/schema.js';
 import { buildDedupeKey } from '../metadata/dedupe.js';
@@ -206,6 +207,9 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
           .set({ aiStatus: 'manual', aiSkip: true, updatedAt: new Date() })
           .where(eq(mediaAsset.id, asset.id))
           .run();
+      } else if (ctx.ai.enrichEnabled && readGateMode(ctx) === 'ask') {
+        // X2 归档门控：不自动入队，等用户在群里点「要 AI 审核 / 手动归类」的按钮。
+        // aiStatus 保持 pending（语义：待处理）；提问消息由调用方（index.ts）发送。
       } else if (ctx.ai.enrichEnabled) {
         // AI 富化：启用时入队（同 asset 去重）
         ctx.queue.enqueue(

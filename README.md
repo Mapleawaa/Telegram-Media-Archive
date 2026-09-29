@@ -67,6 +67,10 @@ pnpm -F @tma/core export:user-data     # 导出到 apps/core/.data/exports/
 入库和 AI 整理完成都会私聊推送（含归类与 AI 状态）；`/search` `/stats` `/recent` `/detail` `/pending`
 可随时查询。`/stop` 关闭通知。
 
+**归档门控（X2，默认开启）**：转发媒体进群后，Bot 会引用该消息问「需要让 AI 审核这个帖子吗？」——
+点「是」走 AI 富化；点「否」标为其他并弹出分类键盘（成人/游戏/图书/电影/剧集/动漫/图集/其他）手动归。
+相册整组只问一次。设置页「归档门控」可切回自动 AI。
+
 **改完代码的自检顺序**：
 
 ```bash

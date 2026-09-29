@@ -44,6 +44,8 @@ let app: Awaited<ReturnType<typeof createServer>>;
 
 beforeEach(async () => {
   ctx = createTestContext({ AI_PROVIDER: 'mock', AI_CHAT_MODEL: 'mock/chat' } as never);
+  // 本文件测的是 auto 门控时代的入库即入队行为（X2 门控有独立测试）
+  setSetting(ctx, SETTING_KEYS.ingestGateMode, 'auto');
   app = await createServer(ctx, { tg: fakeTg });
 });
 

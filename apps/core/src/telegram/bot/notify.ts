@@ -2,6 +2,7 @@ import type { BusEvent } from '../../events/bus.js';
 import type { AppContext } from '../../context.js';
 import { categoryLabel } from '../../metadata/category.js';
 import { readNotifyChatId } from './commands.js';
+import { readGateMode } from './gate.js';
 
 /**
  * X1-1 归档通知：媒体入库 / AI 整理完成后，主动私聊通知绑定的用户。
@@ -60,7 +61,11 @@ function typeLabel(type: string): string {
   return TYPE_LABELS[type] ?? type;
 }
 
-export function formatArchivedNotice(items: PendingNotice[], albumCount: number | null): string {
+export function formatArchivedNotice(
+  items: PendingNotice[],
+  albumCount: number | null,
+  gateMode: 'ask' | 'auto' = 'auto',
+): string {
   const first = items[0];
   if (!first) return '';
   const aiPending = first.brief.aiStatus === 'pending';
@@ -72,7 +77,12 @@ export function formatArchivedNotice(items: PendingNotice[], albumCount: number 
     lines.push(`类型：${typeLabel(first.brief.type)} · 分类：${categoryLabel(first.brief.category ?? 'other')}`);
   }
   if (aiPending) {
-    lines.push('🤖 AI 整理中，完成后会再通知你');
+    // X2 门控下 pending = 等用户点按钮；auto 模式下 pending = 已排队
+    lines.push(
+      gateMode === 'ask'
+        ? '⏳ 请在群里点按钮选择：AI 审核或手动归类'
+        : '🤖 AI 整理中，完成后会再通知你',
+    );
   } else if (first.brief.aiStatus === 'manual') {
     lines.push('⏸ 该来源已被拉黑，进入人工分类队列');
   } else if (first.brief.aiStatus === 'skipped') {
@@ -152,6 +162,7 @@ export function createNotifyService(ctx: AppContext, send: NotifySender): Notify
 
     const chatId = readNotifyChatId(ctx);
     if (!chatId) return; // 未绑定：静默丢弃
+    const gateMode = readGateMode(ctx);
 
     const notices = entry.notices;
     const byKind = (kind: PendingNotice['kind']): PendingNotice[] => notices.filter((n) => n.kind === kind);
@@ -163,7 +174,7 @@ export function createNotifyService(ctx: AppContext, send: NotifySender): Notify
     const failed = byKind('failed');
 
     const texts: string[] = [];
-    if (archived.length > 0) texts.push(formatArchivedNotice(archived, entry.albumCount));
+    if (archived.length > 0) texts.push(formatArchivedNotice(archived, entry.albumCount, gateMode));
     for (const m of merged) texts.push(formatMergedNotice(m));
     if (analyzed.length > 0) texts.push(formatAnalyzedNotice(analyzed));
     if (manual.length > 0) texts.push(formatManualNotice(manual));

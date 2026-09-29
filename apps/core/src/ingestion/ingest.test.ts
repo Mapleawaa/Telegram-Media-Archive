@@ -237,8 +237,9 @@ describe('ingestMessage', () => {
     expect(audits.map((a) => a.event)).toContain('media.manual_review');
   });
 
-  it('未命中黑名单的正常来源 → 照常入队 ai.enrich', () => {
+  it('未命中黑名单的正常来源（auto 门控）→ 照常入队 ai.enrich', () => {
     const ctx = createTestContext({ AI_PROVIDER: 'mock', AI_CHAT_MODEL: 'mock/chat' } as never);
+    setSetting(ctx, SETTING_KEYS.ingestGateMode, 'auto');
     setSetting(ctx, SETTING_KEYS.aiSkipSources, ['channel:-100999']);
 
     ingestMessage(

@@ -6,10 +6,12 @@ import { Bot } from 'grammy';
 import type { Message } from 'grammy/types';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { Logger } from 'pino';
+import type { InlineKeyboard } from '@tma/shared';
 import type { AppConfig } from '../../config.js';
 import type { ForwardResult, MessageRef, SendMode, TelegramClient } from '../client.js';
 import type { IncomingMessage } from '../types.js';
 import { extractIncoming } from './extract.js';
+import { gatePromptKeyboard, type GateResult, type GateTarget } from './gate.js';
 
 export interface BotClientDeps {
   config: AppConfig;
@@ -20,6 +22,11 @@ export interface BotClientDeps {
    * 可选——未提供时私聊命令被忽略（冒烟/测试环境）。
    */
   onCommand?: (text: string, chatId: number) => Promise<string>;
+  /**
+   * X2 门控按钮回调：解析 callback_data 并应用决策，返回要编辑进提示消息的内容。
+   * 可选——未提供时按钮点击只应答不动作（测试环境）。
+   */
+  onGateCallback?: (data: string) => GateResult | null;
 }
 
 /** Telegram 的 Bot 命令菜单（聊天框左侧菜单按钮） */
@@ -53,6 +60,24 @@ export class BotClient implements TelegramClient {
     });
     this.bot.on('message', (ctx) => this.handle(ctx.message));
     this.bot.on('channel_post', (ctx) => this.handle(ctx.channelPost));
+    // X2：门控按钮回调——应用决策并把提示消息原地编辑成结果
+    this.bot.on('callback_query:data', async (ctx) => {
+      try {
+        const result = this.deps.onGateCallback?.(ctx.callbackQuery.data ?? '') ?? null;
+        await ctx.answerCallbackQuery().catch(() => undefined);
+        if (result) {
+          // 提示消息可能已被用户删除；编辑失败只记日志，不影响决策已落库
+          await ctx
+            .editMessageText(result.text, {
+              reply_markup: (result.keyboard ?? undefined) as never,
+            })
+            .catch((err) => this.logger.warn({ err }, '门控提示消息编辑失败（决策已生效）'));
+        }
+      } catch (err) {
+        this.logger.error({ err, data: ctx.callbackQuery.data }, '门控按钮处理失败');
+        await ctx.answerCallbackQuery({ text: '处理出错，稍后再试' }).catch(() => undefined);
+      }
+    });
     this.bot.catch((err) => {
       this.logger.error({ err: err.error }, 'Bot 更新处理异常');
     });
@@ -97,6 +122,21 @@ export class BotClient implements TelegramClient {
       await this.bot.api.sendMessage(chatId, text, { link_preview_options: { is_disabled: true } });
     } catch (err) {
       this.logger.error({ err, chatId }, 'Bot 发送文本失败');
+    }
+  }
+
+  /**
+   * X2 门控提问：引用刚归档的消息，问「需要让 AI 审核这个帖子吗？」。
+   * 失败只记日志——归档已成功，提问只是交互层。
+   */
+  async sendGatePrompt(chatId: number, replyToMessageId: number, target: GateTarget): Promise<void> {
+    try {
+      await this.bot.api.sendMessage(chatId, '需要让 AI 审核这个帖子吗？', {
+        reply_parameters: { message_id: replyToMessageId },
+        reply_markup: gatePromptKeyboard(target) as never,
+      });
+    } catch (err) {
+      this.logger.warn({ err, chatId, replyToMessageId }, '门控提问发送失败（归档不受影响）');
     }
   }
 

@@ -66,7 +66,8 @@ describe('createNotifyService', () => {
     });
 
     const { assetId } = ingestMessage(ctx, makeMsg());
-    // 测试环境未配 AI（ingest 直接标 skipped）；模拟「已入队富化」的线上状态
+    // 模拟 auto 门控「已入队富化」的线上状态（pending = 整理中；ask 模式下 pending 是等按钮）
+    setSetting(ctx, SETTING_KEYS.ingestGateMode, 'auto');
     ctx.sqlite.prepare(`UPDATE media_asset SET ai_status = 'pending' WHERE id = ?`).run(assetId);
     notify.onEvent({ event: 'media.created', payload: { mediaId: assetId }, actor: 'bot', ts: Date.now() });
     notify.flushNow();

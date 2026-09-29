@@ -64,6 +64,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   anime: '动漫',
   adult: '成人',
   gallery: '图集',
+  game: '游戏',
+  book: '图书',
   other: '其他',
 };
 
