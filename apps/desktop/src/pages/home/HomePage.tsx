@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Film, RefreshCw, Sparkles } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router';
+import { PrivacyNotice } from '@/components/media/PrivacyNotice';
 import { Shelf } from '@/components/media/Shelf';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
 import { categoryLabel, formatBytes, formatDuration } from '@/lib/format';
+import { filterByPrivacy, useSensitiveHidden } from '@/stores/privacy';
 
 const RECENT_LIMIT = 18;
 
@@ -21,7 +23,8 @@ export function HomePage() {
   });
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats });
 
-  const items = recent.data?.items ?? [];
+  const sensitiveHidden = useSensitiveHidden();
+  const { items, hiddenCount } = filterByPrivacy(recent.data?.items ?? [], sensitiveHidden);
   const hero = items[0];
   const heroDetail = useQuery({
     queryKey: ['media', hero?.id],
@@ -29,16 +32,24 @@ export function HomePage() {
     enabled: Boolean(hero),
   });
 
-  // 分类行只显示有内容的（未分类夹排在最后）
-  const shelves = useMemo(
-    () => (sections.data?.sections ?? []).filter((s) => s.count > 0 && s.items.length > 0),
-    [sections.data],
-  );
+  // 分类行只显示有内容的（未分类夹排在最后）；每行的预览也按隐私模式过滤
+  const shelves = useMemo(() => {
+    const out: { key: string; label: string; count: number; items: typeof items }[] = [];
+    for (const s of sections.data?.sections ?? []) {
+      const filtered = filterByPrivacy(s.items, sensitiveHidden);
+      const count = s.count - filtered.hiddenCount;
+      if (count <= 0 || filtered.items.length === 0) continue;
+      out.push({ key: s.key, label: s.label, count, items: filtered.items });
+    }
+    return out;
+  }, [sections.data, sensitiveHidden, items]);
 
   const failed = (stats.data?.jobsByStatus.failed ?? 0) + (stats.data?.jobsByStatus.dead ?? 0);
 
   return (
     <div className="space-y-8 px-7 py-6">
+      <PrivacyNotice hiddenCount={hiddenCount} />
+
       {/* ---- Hero：最新一条 ---- */}
       {hero ? (
         <section className="relative overflow-hidden rounded-2xl ring-1 ring-white/10">

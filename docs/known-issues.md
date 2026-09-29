@@ -30,7 +30,7 @@
 | B3b | P2 | 🟡 派生标题按 24 字硬切，出现「…白西装坐皮椅持杖，身后黑」半截标题 | `deriveTitleFromDescription` | ✅ 已修（2026-09-29）：改为按句中标点断句（上限 28 字）+ reindex 重生成 6 条历史标题 |
 | B5 | P2 | 🟡 相册（`media_group_id` 已记录）在网格中未相邻渲染、无相册标记 | `queries.ts` 未用该字段 | ✅ 已修（P3-3）：列表暴露 `mediaGroupId`/`albumCount`（**1 = 非相册**，子查询 NULL 场景已归一）+ 卡片角标 + `clusterByAlbum()` 稳定相邻聚簇（跨页不拼组） |
 | B6 | P2 | 🟡 无法修改主来源（星标只读）、无法删除媒体、无法手动改标题 | 详情页 | 加「设为主源」「删除（软删）」「编辑标题」三个动作 |
-| B7 | P2 | 🟡 搜索页无筛选器（Library 有，未复用） | `SearchPage.tsx` | 复用 Library 的筛选组件 |
+| B7 | P2 | 🟡 搜索页无筛选器（Library 有，未复用） | `SearchPage.tsx` | ✅ 已修（P4 第 2 轮）：补上同一套筛选条件（类型/分类/分辨率/年份/标签） |
 | B8 | P2 | 🟡 媒体库无排序切换（只有「最新」；搜索态是相关性） | `queries.ts` order 参数仅 recent/relevance | ✅ 已修（P3-4）：`sort=recent\|updated\|size\|duration\|year` + Library 页排序下拉 |
 | B9 | P2 | 🟡 详情页缺「重新解析（规则）」动作（`parserVersion` 已存但无入口） | 计划 M1 提到 | 单条 + 批量重解析规则 |
 | B10 | P3 | 🟡 深色模式未接入（CSS 有 `.dark` 变量，无切换开关） | `index.css` | ✅ 已修（P4 第 1 轮）：`next-themes` 接线，默认深色，侧栏可切 浅色/深色/跟随系统 |

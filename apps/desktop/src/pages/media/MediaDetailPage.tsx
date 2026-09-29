@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
+  ChevronRight,
   Copy,
   ExternalLink,
   Forward,
+  Lock,
   RefreshCw,
   Send,
   Sparkles,
@@ -17,14 +19,15 @@ import type { MediaDetail } from '@tma/shared';
 import { ForwardDialog } from '@/components/media/ForwardDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import {
   aiStatusLabel,
+  categoryLabel,
   formatBytes,
   formatDateTime,
   formatDuration,
@@ -66,6 +69,35 @@ function Field({ label, value }: { label: string; value: string | number | null 
       <span className="text-muted-foreground">{label}</span>
       <span>{value === null || value === undefined || value === '' ? '—' : value}</span>
     </div>
+  );
+}
+
+/** 折叠区（确定性字段 / 任务记录这类「要查但不常看」的信息） */
+function Fold({
+  title,
+  count,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="group rounded-xl border border-border/70 bg-card/50 [&_summary::-webkit-details-marker]:hidden"
+    >
+      <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-[13px] font-medium">
+        <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+        {title}
+        {typeof count === 'number' ? (
+          <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+        ) : null}
+      </summary>
+      <div className="px-4 pb-3">{children}</div>
+    </details>
   );
 }
 
@@ -131,11 +163,12 @@ export function MediaDetailPage() {
 
   if (detail.isPending) {
     return (
-      <div className="space-y-4 p-6">
-        <Skeleton className="h-8 w-64" />
-        <div className="grid gap-4 lg:grid-cols-[2fr_3fr]">
-          <Skeleton className="aspect-video rounded-lg" />
-          <Skeleton className="h-64 rounded-lg" />
+      <div className="grid gap-6 px-7 py-6 lg:grid-cols-[minmax(300px,1fr)_minmax(0,1.2fr)]">
+        <Skeleton className="aspect-2/3 rounded-2xl" />
+        <div className="space-y-3">
+          <Skeleton className="h-9 w-2/3" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-40 rounded-xl" />
         </div>
       </div>
     );
@@ -143,8 +176,8 @@ export function MediaDetailPage() {
 
   if (detail.isError || !detail.data) {
     return (
-      <div className="p-6">
-        <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
+      <div className="px-7 py-6">
+        <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
           媒体不存在或 Core 未连接。
           <div className="mt-3">
             <Button asChild variant="outline" size="sm">
@@ -160,20 +193,66 @@ export function MediaDetailPage() {
   const primary = d.sources.find((s) => s.isPrimary) ?? d.sources[0];
   const tgUrl = primary ? telegramMessageUrl(primary.chatId, primary.messageId) : null;
 
+  const chips = [
+    d.category ? categoryLabel(d.category) : null,
+    typeLabel(d.type),
+    d.width && d.height ? `${d.width}×${d.height}` : null,
+    formatBytes(d.sizeBytes),
+    d.durationSec ? formatDuration(d.durationSec) : null,
+    d.metadata?.year ? String(d.metadata.year) : null,
+    d.metadata?.season ? `S${d.metadata.season}E${d.metadata.episode ?? '?'}` : null,
+    d.metadata?.quality,
+  ].filter((v): v is string => Boolean(v));
+
   return (
-    <div className="space-y-5 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold">{d.title}</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            #{d.id} · {typeLabel(d.type)} · {formatBytes(d.sizeBytes)}
-            {d.durationSec ? ` · ${formatDuration(d.durationSec)}` : ''}
-            {d.width && d.height ? ` · ${d.width}×${d.height}` : ''}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="px-7 py-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(300px,1fr)_minmax(0,1.2fr)]">
+        {/* ---------- 左：海报区 + 动作 ---------- */}
+        <div className="space-y-3 lg:sticky lg:top-6 lg:self-start">
+          <div className="relative overflow-hidden rounded-2xl bg-black/40 ring-1 ring-white/10">
+            {d.hasThumbnail ? (
+              <img
+                src={api.thumbnailUrl(d.id)}
+                alt=""
+                className="max-h-[62vh] w-full object-contain"
+              />
+            ) : (
+              <div className="flex aspect-2/3 items-center justify-center text-xs text-muted-foreground">
+                无缩略图
+              </div>
+            )}
+            {d.isSensitive ? (
+              <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] text-white/90 backdrop-blur-sm">
+                <Lock className="size-3" />
+                敏感
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" className="gap-1.5" onClick={() => setForwardOpen(true)}>
+              <Send className="size-4" /> 转发到…
+            </Button>
+            {tgUrl && (
+              <Button asChild size="sm" variant="outline" className="gap-1.5">
+                <a href={tgUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="size-4" /> 在 Telegram 打开
+                </a>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => enrich.mutate()}
+              disabled={enrich.isPending}
+            >
+              <Sparkles className="size-4" /> AI 分析
+            </Button>
+          </div>
+
           <label
-            className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs"
+            className="flex items-center gap-2 rounded-lg border border-border/70 bg-card/50 px-3 py-2 text-xs"
             title="跳过 AI：不进模型（不审核、不打标签），转入待分类队列"
           >
             <Switch
@@ -182,131 +261,111 @@ export function MediaDetailPage() {
               onCheckedChange={(checked) => aiPolicy.mutate(!checked)}
               aria-label={d.aiSkip ? '重新走 AI' : '跳过 AI'}
             />
-            <span className="text-muted-foreground">{d.aiSkip ? '跳过 AI' : '走 AI'}</span>
+            <span className="text-muted-foreground">
+              {d.aiSkip ? '当前已跳过 AI（待人工分类）' : '走 AI 流程'}
+            </span>
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {aiStatusLabel(d.aiStatus)}
+            </span>
           </label>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => enrich.mutate()}
-            disabled={enrich.isPending}
-          >
-            <Sparkles className="size-4" /> AI 分析
-          </Button>
-          <Button size="sm" onClick={() => setForwardOpen(true)}>
-            <Send className="size-4" /> 转发到…
-          </Button>
-          {tgUrl && (
-            <Button asChild size="sm" variant="outline">
-              <a href={tgUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="size-4" /> Telegram
-              </a>
-            </Button>
-          )}
-        </div>
-      </div>
 
-      <div className="grid gap-5 lg:grid-cols-[2fr_3fr]">
-        <div className="space-y-4">
-          <div className="overflow-hidden rounded-lg border bg-muted">
-            {d.hasThumbnail ? (
-              <img src={api.thumbnailUrl(d.id)} alt="" className="w-full object-contain" />
-            ) : (
-              <div className="flex aspect-video items-center justify-center text-xs text-muted-foreground">
-                无缩略图
-              </div>
+          <Fold title="确定性字段">
+            {d.metadata?.fileName && <CopyField label="文件名" value={d.metadata.fileName} />}
+            <Field label="MIME" value={d.mime} />
+            <Field label="来源标记" value={d.metadata?.source} />
+            <Field label="编码" value={d.metadata?.codec} />
+            <Field label="音轨" value={d.metadata?.audio} />
+            <div className="my-1 border-t" />
+            <CopyField label="file_unique_id" value={d.fileUniqueId} />
+            {primary && (
+              <CopyField label="chat / message" value={`${primary.chatId} / ${primary.messageId}`} />
             )}
+          </Fold>
+        </div>
+
+        {/* ---------- 右：信息与操作 ---------- */}
+        <div className="min-w-0 space-y-5">
+          <div className="min-w-0">
+            <div className="flex items-start gap-3">
+              <h1 className="min-w-0 flex-1 text-[26px] font-semibold leading-tight tracking-tight">
+                {d.title}
+              </h1>
+              {d.isSensitive ? (
+                <Badge variant="destructive" className="mt-1 shrink-0 text-[10px]">
+                  敏感
+                </Badge>
+              ) : null}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="tabular-nums">#{d.id}</span>
+              {chips.map((c) => (
+                <span key={c} className="rounded-full bg-muted px-2 py-0.5">
+                  {c}
+                </span>
+              ))}
+            </div>
           </div>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">确定性字段</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {d.metadata?.fileName && <CopyField label="文件名" value={d.metadata.fileName} />}
-              <Field label="类型" value={typeLabel(d.type)} />
-              <Field label="MIME" value={d.mime} />
-              <Field label="大小" value={formatBytes(d.sizeBytes)} />
-              <Field label="时长" value={d.durationSec ? formatDuration(d.durationSec) : null} />
-              <Field label="分辨率" value={d.width && d.height ? `${d.width}×${d.height}` : null} />
-              <Field label="年份" value={d.metadata?.year} />
-              <Field label="季/集" value={d.metadata?.season ? `S${d.metadata.season}E${d.metadata.episode ?? '?'}` : null} />
-              <Field label="来源标记" value={d.metadata?.source} />
-              <Field label="AI 状态" value={aiStatusLabel(d.aiStatus)} />
-              <div className="my-1 border-t" />
-              <CopyField label="file_unique_id" value={d.fileUniqueId} />
-              {primary && <CopyField label="chat / message" value={`${primary.chatId} / ${primary.messageId}`} />}
-            </CardContent>
-          </Card>
-
           {d.metadata?.summary && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Sparkles className="size-4" /> AI 摘要
-                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">
-                    {d.metadata.extractedBy ?? '—'}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="whitespace-pre-wrap pt-0 text-xs leading-relaxed">
-                {d.metadata.summary}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">标签</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-0">
-              <div className="flex flex-wrap gap-1.5">
-                {d.tags.length === 0 && (
-                  <span className="text-xs text-muted-foreground">还没有标签</span>
-                )}
-                {d.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="gap-1 pr-1">
-                    {tag}
-                    <button
-                      className="rounded-full p-0.5 hover:bg-background/50"
-                      onClick={() => removeTag.mutate(tag)}
-                      aria-label={`删除标签 ${tag}`}
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
+            <section className="rounded-xl border border-border/70 bg-card/50 p-4">
+              <div className="mb-1.5 flex items-center gap-2 text-[13px] font-medium">
+                <Sparkles className="size-3.5 text-primary" />
+                AI 摘要
+                <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                  {d.metadata.extractedBy ?? '—'}
+                </span>
               </div>
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (tagDraft.trim()) addTag.mutate(tagDraft.trim());
-                }}
-              >
-                <Input
-                  className="h-8"
-                  placeholder="添加标签（回车确认）"
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                />
-                <Button size="sm" variant="outline" type="submit" disabled={!tagDraft.trim()}>
-                  添加
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+              <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">
+                {d.metadata.summary}
+              </div>
+            </section>
+          )}
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">来源（{d.sources.length}）</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-0">
+          <section className="rounded-xl border border-border/70 bg-card/50 p-4">
+            <div className="mb-2 text-[13px] font-medium">标签</div>
+            <div className="flex flex-wrap gap-1.5">
+              {d.tags.length === 0 && (
+                <span className="text-xs text-muted-foreground">还没有标签</span>
+              )}
+              {d.tags.map((tag) => (
+                <Badge key={tag} variant="secondary" className="gap-1 pr-1">
+                  {tag}
+                  <button
+                    className="rounded-full p-0.5 hover:bg-background/50"
+                    onClick={() => removeTag.mutate(tag)}
+                    aria-label={`删除标签 ${tag}`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (tagDraft.trim()) addTag.mutate(tagDraft.trim());
+              }}
+            >
+              <Input
+                className="h-8"
+                placeholder="添加标签（回车确认）"
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+              />
+              <Button size="sm" variant="outline" type="submit" disabled={!tagDraft.trim()}>
+                添加
+              </Button>
+            </form>
+          </section>
+
+          <section className="rounded-xl border border-border/70 bg-card/50 p-4">
+            <div className="mb-2 text-[13px] font-medium">来源（{d.sources.length}）</div>
+            <div className="space-y-2">
               {d.sources.map((s) => {
                 const url = telegramMessageUrl(s.chatId, s.messageId);
                 return (
-                  <div key={s.id} className="rounded-md border px-3 py-2 text-xs">
+                  <div key={s.id} className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
                     <div className="flex items-center gap-2">
                       {s.isPrimary && <Star className="size-3 fill-amber-400 text-amber-400" />}
                       <span className="font-medium">{s.chatTitle ?? `chat ${s.chatId}`}</span>
@@ -343,16 +402,14 @@ export function MediaDetailPage() {
                   </div>
                 );
               })}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">注解（{d.annotations.length}）</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-0">
+          <section className="rounded-xl border border-border/70 bg-card/50 p-4">
+            <div className="mb-2 text-[13px] font-medium">注解（{d.annotations.length}）</div>
+            <div className="space-y-2">
               {d.annotations.map((a) => (
-                <div key={a.id} className="rounded-md bg-muted px-3 py-2 text-xs">
+                <div key={a.id} className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
                   <div className="text-muted-foreground">{formatDateTime(a.createdAt)}</div>
                   <div className="mt-0.5">{a.rawText}</div>
                 </div>
@@ -374,15 +431,12 @@ export function MediaDetailPage() {
                   保存注解
                 </Button>
               </form>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
           {d.jobs.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">任务记录</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1.5 pt-0">
+            <Fold title="任务记录" count={d.jobs.length}>
+              <div className="space-y-1.5">
                 {d.jobs.map((job) => (
                   <div key={job.id} className="flex items-center gap-2 text-xs">
                     <Badge
@@ -402,7 +456,7 @@ export function MediaDetailPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 px-2"
+                        className={cn('h-6 px-2')}
                         onClick={() =>
                           void api.retryJob(job.id).then(() => {
                             toast.success('已重新入队');
@@ -415,9 +469,13 @@ export function MediaDetailPage() {
                     )}
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </Fold>
           )}
+
+          <div className="text-[11px] text-muted-foreground">
+            播放仍在 Telegram：<Link to="/library" className="text-primary">返回媒体库</Link>
+          </div>
         </div>
       </div>
 

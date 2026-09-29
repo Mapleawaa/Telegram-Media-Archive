@@ -18,6 +18,9 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { api, getCoreUrl, setCoreUrl } from '@/lib/api';
 import { formatRelative } from '@/lib/format';
+import { usePrivacyStore } from '@/stores/privacy';
+import { useAppearanceStore } from '@/stores/appearance';
+import { COVER_MODES, useUiStore } from '@/stores/ui';
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -25,6 +28,12 @@ export function SettingsPage() {
   const caps = useQuery({ queryKey: ['ai-capabilities'], queryFn: api.aiCapabilities });
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.sourcesForward });
 
+  const privacyEnabled = usePrivacyStore((s) => s.enabled);
+  const setPrivacy = usePrivacyStore((s) => s.setEnabled);
+  const font = useAppearanceStore((s) => s.font);
+  const setFont = useAppearanceStore((s) => s.setFont);
+  const coverMode = useUiStore((s) => s.coverMode);
+  const setCoverMode = useUiStore((s) => s.setCoverMode);
   const [coreUrl, setCoreUrlDraft] = useState(getCoreUrl());
   const [targetChat, setTargetChat] = useState('');
   const [mode, setMode] = useState<'forward' | 'copy'>('copy');
@@ -309,6 +318,74 @@ export function SettingsPage() {
             说明：Telegram 的转发来源分四种。若某条「转发自群」但原发送者未隐藏，来源会记成
             <span className="font-mono"> user:&lt;id&gt;</span> 而非群——此时可到该媒体详情页用「跳过 AI」逐个处理。
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">外观与隐私</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-0">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">正文字体</Label>
+            <div className="flex gap-1 rounded-lg border p-0.5">
+              {(
+                [
+                  { value: 'wenkai' as const, label: '霞鹜文楷' },
+                  { value: 'ui' as const, label: 'Geist' },
+                ]
+              ).map((o) => (
+                <Button
+                  key={o.value}
+                  size="sm"
+                  variant={font === o.value ? 'secondary' : 'ghost'}
+                  className="h-7 flex-1 text-xs"
+                  onClick={() => setFont(o.value)}
+                >
+                  {o.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">封面排列</Label>
+            <div className="flex gap-1 rounded-lg border p-0.5">
+              {COVER_MODES.map((m) => (
+                <Button
+                  key={m.value}
+                  size="sm"
+                  variant={coverMode === m.value ? 'secondary' : 'ghost'}
+                  className="h-7 flex-1 text-xs"
+                  title={m.hint}
+                  onClick={() => setCoverMode(m.value)}
+                >
+                  {m.label}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              竖屏 = 2:3 裁切；方形 = 1:1 裁切；原始比例 = 不裁切、高低错落。
+            </p>
+          </div>
+
+          <Separator />
+
+          <label className="flex items-start gap-3">
+            <Switch
+              checked={privacyEnabled}
+              onCheckedChange={setPrivacy}
+              aria-label="隐私模式"
+            />
+            <span className="space-y-0.5">
+              <span className="block text-[13px] font-medium">隐私模式</span>
+              <span className="block text-[11px] leading-relaxed text-muted-foreground">
+                开启后，敏感内容（人工标记，或归入成人分类/命中成人标签）在首页、媒体库、搜索中
+                <strong>默认隐藏</strong>；页面顶部会出现提示条，可「临时显示」（只在本次会话有效）。
+                Inbox 待分类队列不受影响——那里正需要看到它们来归类。
+              </span>
+            </span>
+          </label>
         </CardContent>
       </Card>
 

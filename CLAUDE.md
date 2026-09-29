@@ -14,10 +14,10 @@ AI 媒体归档整理器：**Telegram 存原始媒体（事实源）**，本地 
 
 ## 状态速览（2026-09-29）
 
-功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅ → P3 ✅ → P4 🔄（第 1 轮已出，待用户实机审阅）** → P5。
+功能里程碑 M0/M1/M3/M4 完成；当前执行「地基整固」P1-P5：**P1 ✅ → P2 ✅ → P3 ✅ → P4 ✅（主体完成，待用户实机微调）→ P5（下一步）**。
 P2 = AI 介入分流器（来源黑名单 → 不进模型 → 人工分类队列），收口见 `docs/handoff/P2-ai-routing.md`。
 P3 = 分类体系（六类 + 自定义，user > llm > rule）+ 标签智能（`tags.consolidate` 只看标签），收口见 `docs/handoff/P3-categories-tags.md`。
-P4 = Desktop UI 重设计（影音墙，深色优先 + 霞鹜文楷 + 海报卡 + Hero/货架首页），进度见 `docs/handoff/P4-desktop-ui.md`。
+P4 = Desktop UI 重设计（影音墙）：深色优先 + 霞鹜文楷 + 海报卡（三种封面排列）+ Hero/货架首页 + 分类 chips/筛选 + 海报式详情页 + 悬停/右键/快捷键 + 隐私模式，见 `docs/handoff/P4-desktop-ui.md`。
 C 类（MTProto/Agent/Trace 图/打包/批量/真实 embedding）按用户裁定**全部暂缓**。
 真机库 25 条媒体（分类已全量回填：adult 12 / gallery 7 / other 5 / anime 1；`is_sensitive` 13 条；标签 122 条、均值 4.88）；真实 AI = DeepSeek（`deepseek-flash` 文本 + `deepseek-v4-flash-vision-exp` 视觉）。
 
@@ -68,10 +68,11 @@ telegram-media-archive/
 │        ├─ lib/api.ts             # ★所有 REST 端点集中在此（前端唯一出口）
 │        ├─ lib/{format,queryClient,utils}.ts
 │        ├─ hooks/useEventStream.ts# WS 事件 → TanStack Query 失效映射（含 library-sections）
-│        ├─ stores/{ui,connection,appearance}.ts  # Zustand：UI 偏好 / 连接态 / 主题字体
+│        ├─ hooks/useHotkeys.ts    # 全局快捷键（/ 搜索、Esc 返回）
+│        ├─ stores/{ui,connection,appearance,privacy}.ts  # UI 偏好 / 连接态 / 字体 / 隐私模式
 │        ├─ components/
-│        │  ├─ layout/AppShell.tsx # 侧栏导航 + 主题/字体开关 + 离线横幅
-│        │  ├─ media/{PosterCard,Shelf,MediaRow}.tsx  # 影音墙：海报卡 / 横向货架 / 密集行
+│        │  ├─ layout/AppShell.tsx # 侧栏导航 + 主题/字体/隐私开关 + 收起侧栏 + 离线横幅
+│        │  ├─ media/{PosterCard,Shelf,PosterGrid,MediaRow,PrivacyNotice}.tsx  # 影音墙：海报卡 / 货架 / 网格(含瀑布流) / 密集行 / 隐私提示
 │        │  ├─ media/{ForwardDialog,ManualClassifyDialog}.tsx
 │        │  └─ ui/                 # shadcn 组件（button/card/badge/dialog/select/tabs…）
 │        └─ pages/                 # home / library / media / search / inbox / ai / settings
@@ -169,8 +170,13 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 
 ## 下一步
 
-**P4 — Desktop UI 重设计（影音墙）进行中**（进度见 `docs/handoff/P4-desktop-ui.md`）：
-- **第 1 轮已完成**（P4-1 视觉基调 + P4-2 首页）：深色优先主题 + 霞鹜文楷（默认）/ Geist 切换 + 海报卡 + Hero/横向货架首页。
-- **卡在「用户实机审阅」**——按约定必须先请用户在 Tauri 窗口看过再迭代。
-- 后续轮次：P4-3 分类页筛选/排序重做 → P4-4 详情页海报式布局 → P4-5 悬停操作/快捷键 → P4-6 隐私模式 → P4-7 收口。
-- 审阅请连**真实 core（8787）**：演示库是假 TG，海报墙没有缩略图。
+**P5 — 细节与运维收口**（`docs/handoff/NEXT-P2-P5-handoff.md` §8）：B6 详情页动作（设为主源/软删/改标题）、
+B9 重新解析、B13 转发增强、B14 目标 chat 下拉、D1 备份习惯、D3 缩略图缓存清理、D4 日志落盘、D5 lint/format、D8 ErrorBoundary；
+外加 P4 遗留的 B12 应用图标（随 M7 打包）与 Tauri 窗口尺寸记忆。
+
+> P4 主体已完成，**等用户实机微调反馈**；审阅请连真实 core（8787）——演示库是假 TG，没有缩略图。
+
+## 常用 UI 偏好（前端 localStorage，不进库）
+
+`tma.theme`（浅/深/系统）· `tma.font`（wenkai/ui）· `tma.coverMode`（portrait/square/natural）·
+`tma.viewMode`（grid/list）· `tma.privacyMode`（0/1）· `tma.sidebarCollapsed`（0/1）
