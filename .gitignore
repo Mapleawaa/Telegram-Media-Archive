@@ -30,3 +30,6 @@ apps/desktop/src-tauri/gen/
 logs/
 .DS_Store
 Thumbs.db
+
+# agent workspace (Agent 工作目录/笔记，不入库)
+.workbuddy/
