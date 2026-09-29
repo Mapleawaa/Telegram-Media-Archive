@@ -20,7 +20,7 @@ const YEAR_RE = /(?:\b|[^0-9])((?:19|20)\d{2})(?![0-9pP])/g;
 
 const AV_EXT_RE = /\.[A-Za-z0-9]{2,4}$/;
 const BRACKET_JUNK_RE = /[[(【（][^[\]()（）【】]*[)\]）】]/g;
-const SEP_RE = /[._\s\-]+/g;
+const SEP_RE = /[._\s-]+/g;
 
 const QUALITY_CANON: Record<string, string> = { '4k': '2160p', '8k': '4320p' };
 
@@ -62,12 +62,12 @@ function canonicalQuality(raw: string): string {
 }
 
 function canonicalSource(raw: string): string {
-  const key = raw.toLowerCase().replace(/[.\-]/g, '');
+  const key = raw.toLowerCase().replace(/[.-]/g, '');
   return SOURCE_CANON[key] ?? raw.toUpperCase();
 }
 
 function canonicalCodec(raw: string): string {
-  const key = raw.toLowerCase().replace(/[.\-]/g, '');
+  const key = raw.toLowerCase().replace(/[.-]/g, '');
   return CODEC_CANON[key] ?? raw.toUpperCase();
 }
 

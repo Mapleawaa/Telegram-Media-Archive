@@ -105,7 +105,7 @@ describe('hybridSearch', () => {
     } as never);
     ingestMessage(ctx, makeMsg(1, 'blade runner cyberpunk'));
     ensureVecTable(ctx.sqlite, 64, ctx.logger);
-    upsertVector(ctx.sqlite, 999, new Array(64).fill(0.1));
+    upsertVector(ctx.sqlite, 999, Array.from({ length: 64 }, () => 0.1));
 
     const result = await hybridSearch(ctx, ctx.ai, { query: 'blade runner', filters: {}, limit: 5 });
     expect(result.debug.vectorHits).toBeGreaterThan(0); // 表非空 → 会尝试向量检索

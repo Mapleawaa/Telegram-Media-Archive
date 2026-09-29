@@ -8,7 +8,7 @@ export function normalizeFilenameForDedupe(fileName: string): string {
     .toLowerCase()
     .replace(EXT_RE, '')
     .replace(BRACKET_JUNK_RE, ' ')
-    .replace(/[._\-]+/g, ' ')
+    .replace(/[._-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
