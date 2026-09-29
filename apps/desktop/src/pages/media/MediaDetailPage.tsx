@@ -196,6 +196,7 @@ export function MediaDetailPage() {
               <CardTitle className="text-sm">确定性字段</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
+              {d.metadata?.fileName && <CopyField label="文件名" value={d.metadata.fileName} />}
               <Field label="类型" value={typeLabel(d.type)} />
               <Field label="MIME" value={d.mime} />
               <Field label="大小" value={formatBytes(d.sizeBytes)} />

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Clock, Database } from 'lucide-react';
 import { Link } from 'react-router';
 import { MediaCard } from '@/components/media/MediaCard';
@@ -11,6 +11,7 @@ import { useConnectionStore } from '@/stores/connection';
 
 export function DashboardPage() {
   const online = useConnectionStore((s) => s.online);
+  const queryClient = useQueryClient();
   const stats = useQuery({
     queryKey: ['stats'],
     queryFn: api.stats,
@@ -92,7 +93,9 @@ export function DashboardPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => void api.retryJob(job.id)}
+                  onClick={() =>
+                    void api.retryJob(job.id).then(() => queryClient.invalidateQueries())
+                  }
                 >
                   重试
                 </Button>

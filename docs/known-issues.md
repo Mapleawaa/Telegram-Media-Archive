@@ -6,24 +6,26 @@
 
 ## A. 明确 Bug（代码缺陷）
 
-| ID | 优先级 | 问题 | 位置 / 现状 | 建议 |
+| ID | 优先级 | 问题 | 位置 / 现状 | 状态 |
 |---|---|---|---|---|
-| A1 | **P1** | 🔴 无文件名资产的二级去重键退化为「仅大小」：照片（无 file_name）的 `dedupe_key = sha256('\|\|size\|')`，**不同照片字节数相同会被错误合并** | `src/metadata/dedupe.ts` + `ingest.ts`；真实数据暂未碰撞（已核验：照片无同尺寸、无多来源合并），属潜伏 bug | 无文件名时不参与二级去重（dedupe_key 用 `file_unique_id` 占位保证唯一），仅保留一级 `file_unique_id` 判定 |
+| A1 | **P1** | 🔴 无文件名资产的二级去重键退化为「仅大小」：照片（无 file_name）的 `dedupe_key` 会因同字节数错误合并 | `src/metadata/dedupe.ts` + `ingest.ts` | ✅ 已修：无文件名时 `dedupe_key = nouid:<file_unique_id>`（不参与二级去重）+ 单测 |
 | A2 | P2 | 🔴 视觉 JSON 被 max_tokens 截断 → 解析失败标记 partial | `src/ai/enrich.ts` | ✅ 已修（dca4406）：`repairTruncatedJson` + max_tokens 4096 |
-| A3 | P2 | 🔴 内容审核拒答被当失败（措辞多样，关键词法漏判） | `src/ai/enrich.ts` | ✅ 已修（dca4406）：判据改为「无 `{` 即说明性文本」→ `vision.unusable` 步骤 |
+| A3 | P2 | 🔴 内容审核拒答被当失败（措辞多样，关键词法漏判） | `src/ai/enrich.ts` | ✅ 已修（dca4406）：`vision.unusable` 步骤；**根治方案见 P2 AI 分流器** |
 | A4 | P2 | 🔴 同标签多来源重复显示（`cos, cos`） | 列表查询/搜索文档 | ✅ 已修（dca4406）：`group_concat(DISTINCT)` + Set 去重 |
-| A5 | P3 | 🟡 任务「重试」按钮不主动失效查询缓存（依赖 WS 事件兜底；WS 断线时界面不刷新） | `DashboardPage.tsx:95`（直接 `api.retryJob`） | 补 `onSuccess: invalidate(['jobs','stats','inbox'])`；详情页/Inbox 同样检查 |
-| A6 | P3 | 🟡 对已完成媒体点「AI 分析」会立刻置回 `pending`，列表项跳动 | `routes/ai.ts` enrich 端点 | 置 pending 前判断是否有活动任务；或 UI 上给「重新分析」明确语义 |
-| A7 | P3 | 🟡 早期 run 的 `totalTokens` 为 null（修复前记录） | 历史数据 | 忽略（或一次性回填，价值低） |
+| A5 | P3 | 🟡 任务「重试」按钮不主动失效查询缓存 | `DashboardPage.tsx` | ✅ 已修：`onSuccess → invalidateQueries()` |
+| A6 | P3 | 🟡 对已完成媒体点「AI 分析」会立刻置回 `pending`，列表项跳动 | `routes/ai.ts` | ⚪ 保持现状（语义正确，toast 已提示；待分类体系上线后随 UI 重做） |
+| A7 | P3 | 🟡 早期 run 的 `totalTokens` 为 null（修复前记录） | 历史数据 | ⚪ 忽略（价值低） |
+| A8 | P1 | 🔴 历史坏标题落库：模型拒答句被当标题（如「图片涉及露骨色情内容，无法生成归档描述」） | `enrich.ts` + `admin.ts` | ✅ 已修：`sanitizeAiTitle` 校验 AI 标题 + reindex 清理历史坏标题 |
 
 ## B. 体验/UI 缺口
 
 | ID | 优先级 | 问题 | 现状 | 建议 |
 |---|---|---|---|---|
-| B1 | **P1** | 🔴 详情页不显示原始文件名（视频文件名信息量最大，API 里已有 `metadata.fileName`） | `MediaDetailPage.tsx` 字段表无此行 | 加一行「文件名」（可复制、长文截断） |
-| B2 | **P1** | 🔴 照片类无标题 → 列表显示 `#18`；视觉描述明明有内容却没用上 | 11 张照片全部无 fileName/canonicalTitle；AI 标题字段为空 | 无标题时用「视觉描述前 20 字」或让视觉步骤顺带产出短标题 |
-| B3 | **P1** | 🔴 垃圾标题：`video`、`1`、`2099396071722440550 0`、纯数字文件名 | 规则标题优先占位，AI 补位不放行 | **待拍板**：规则标题为纯数字/通用词/文件名残留时允许 AI 覆盖（用户尚未确认） |
-| B4 | **P1** | 🟡 标签噪声：23 条媒体 349 个标签（≈15/条，llm 136 + vision 172 + rule 41）；含 `photo`/`1280x720`/群名/`未命名` 等低价值项 | `media_tag` 数据 | ① 过滤：分辨率串、类型词、来源群名、`未命名`；② 归一化（大小写/单复数）；③ 每条上限（如 8 个）；④ 后续可加标签管理页 |
+| B1 | **P1** | 🔴 详情页不显示原始文件名 | `MediaDetailPage.tsx` | ✅ 已修：字段表新增「文件名」行（可复制） |
+| B2 | **P1** | 🔴 照片类无标题 → 列表显示 `#18`；视觉描述没被用上 | 11 张照片全部无 fileName/canonicalTitle | ✅ 已修：`deriveTitleFromDescription`（视觉描述首句 24 字）+ 展示兜底链 `类型 #id` |
+| B3 | **P1** | 🔴 垃圾标题：`video`、`1`、`2099396071722440550 0`、纯数字文件名 | 规则标题优先占位 | ✅ 已修：`isJunkTitle` 判定 + AI 标题补位；真机 19/23 标题可读，其余回落「类型 #id」 |
+| B4 | **P1** | 🟡 标签噪声：23 条 349 个标签（≈15/条） | `media_tag` | ✅ 已修：`tag-policy`（过滤/归一/多来源去重/上限 8）→ 真机 170 个（均值 7.4） |
+| B4b | P2 | 🟡 文件名/标题带推广尾巴（`电报TG@xxx`） | 规则标题 | ✅ 已修：`cleanRuleTitle`（剥句柄/短链）+ reindex 清理 4 条历史数据 |
 | B5 | P2 | 🟡 相册（`media_group_id` 已记录）在网格中未相邻渲染、无相册标记 | `queries.ts` 未用该字段 | 列表按 group 聚簇 + 卡片相册角标 |
 | B6 | P2 | 🟡 无法修改主来源（星标只读）、无法删除媒体、无法手动改标题 | 详情页 | 加「设为主源」「删除（软删）」「编辑标题」三个动作 |
 | B7 | P2 | 🟡 搜索页无筛选器（Library 有，未复用） | `SearchPage.tsx` | 复用 Library 的筛选组件 |

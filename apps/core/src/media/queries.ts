@@ -14,6 +14,7 @@ import type {
 } from '@tma/shared';
 import type { AppContext } from '../context.js';
 import { mediaAnnotation, mediaMetadata, telegramMessage } from '../database/schema.js';
+import { isJunkTitle } from '../metadata/title-policy.js';
 
 export interface ListOptions {
   filters: SearchFilters;
@@ -56,10 +57,26 @@ FROM media_asset a
 LEFT JOIN media_metadata m ON m.media_asset_id = a.id
 `;
 
+const TYPE_LABELS: Record<string, string> = {
+  video: '视频',
+  photo: '图片',
+  audio: '音频',
+  animation: '动图',
+  document: '文档',
+};
+
+/** 展示标题兜底链：canonical → 规则标题（跳过垃圾）→ 文件名（跳过垃圾）→ 类型 #id */
+function displayTitle(row: ListRow): string {
+  if (row.canonical_title && !isJunkTitle(row.canonical_title)) return row.canonical_title;
+  if (row.title_norm && !isJunkTitle(row.title_norm)) return row.title_norm;
+  if (row.file_name && !isJunkTitle(row.file_name)) return row.file_name;
+  return row.canonical_title ?? `${TYPE_LABELS[row.type] ?? row.type} #${row.id}`;
+}
+
 function mapListRow(row: ListRow): MediaListItem {
   return {
     id: row.id,
-    title: row.canonical_title ?? row.title_norm ?? row.file_name ?? `#${row.id}`,
+    title: displayTitle(row),
     type: row.type as MediaType,
     mime: row.mime,
     sizeBytes: row.size,

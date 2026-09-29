@@ -13,13 +13,22 @@ export function normalizeFilenameForDedupe(fileName: string): string {
     .trim();
 }
 
-export function buildDedupeKey(
-  fileName: string | undefined,
-  size: number,
-  durationSec?: number | null,
-): string {
-  const normalized = normalizeFilenameForDedupe(fileName ?? '');
+export interface DedupeKeyInput {
+  fileName?: string | null;
+  size: number;
+  durationSec?: number | null;
+  fileUniqueId: string;
+}
+
+/**
+ * 二级去重键（一级是 file_unique_id）。
+ * 没有文件名时（照片等）**不参与二级去重**：退回以 file_unique_id 占位保证唯一，
+ * 否则「同名+同大小」会把两张不同照片错误合并。
+ */
+export function buildDedupeKey(input: DedupeKeyInput): string {
+  const normalized = normalizeFilenameForDedupe(input.fileName ?? '');
+  if (!normalized) return `nouid:${input.fileUniqueId}`;
   return createHash('sha256')
-    .update(`${normalized}|${size}|${durationSec ?? ''}`)
+    .update(`${normalized}|${input.size}|${input.durationSec ?? ''}`)
     .digest('hex');
 }

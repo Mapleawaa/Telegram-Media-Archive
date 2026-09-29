@@ -4,6 +4,8 @@ import { mediaAsset, mediaMetadata, mediaTag, telegramMessage } from '../databas
 import { buildDedupeKey } from '../metadata/dedupe.js';
 import { rebuildSearchDoc } from '../metadata/rebuild-search-doc.js';
 import { extractHashtags, parseFilename } from '../metadata/rule-parser.js';
+import { filterTags, pruneAssetTags } from '../metadata/tag-policy.js';
+import { cleanRuleTitle } from '../metadata/title-policy.js';
 import type { IncomingMessage } from '../telegram/types.js';
 
 export const PARSER_VERSION = 'rule-v1';
@@ -49,11 +51,12 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
     }
 
     const parsed = msg.media.fileName ? parseFilename(msg.media.fileName) : {};
-    const dedupeKey = buildDedupeKey(
-      msg.media.fileName,
-      msg.media.size ?? 0,
-      msg.media.durationSec ?? null,
-    );
+    const dedupeKey = buildDedupeKey({
+      fileName: msg.media.fileName,
+      size: msg.media.size ?? 0,
+      durationSec: msg.media.durationSec ?? null,
+      fileUniqueId: msg.media.fileUniqueId,
+    });
 
     let asset = db
       .select()
@@ -71,8 +74,9 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
     }
 
     const caption = msg.caption?.trim() || undefined;
+    const cleanedRuleTitle = parsed.title ? cleanRuleTitle(parsed.title) || undefined : undefined;
     const canonicalTitle =
-      parsed.title ?? caption?.slice(0, 120) ?? msg.media.fileName ?? null;
+      cleanedRuleTitle ?? caption?.slice(0, 120) ?? msg.media.fileName ?? null;
 
     let assetCreated = false;
     if (!asset) {
@@ -105,7 +109,7 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
           codec: parsed.codec ?? null,
           source: parsed.source ?? null,
           audio: parsed.audio ?? null,
-          titleNorm: parsed.title ?? null,
+          titleNorm: cleanedRuleTitle ?? null,
           extractedBy: 'rule',
           parserVersion: PARSER_VERSION,
           rawParse: parsed,
@@ -137,14 +141,15 @@ export function ingestMessage(ctx: AppContext, msg: IncomingMessage): IngestResu
       .returning({ id: telegramMessage.id })
       .get();
 
-    // 附言 hashtag → 确定性规则标签（source='rule'，可追溯到出处）
-    const hashtags = extractHashtags(caption, msg.captionEntities);
+    // 附言 hashtag → 确定性规则标签（source='rule'，可追溯到出处）；低价值词在此过滤
+    const hashtags = filterTags(extractHashtags(caption, msg.captionEntities), new Set());
     for (const tag of hashtags) {
       db.insert(mediaTag)
         .values({ mediaAssetId: asset.id, tag, source: 'rule' })
         .onConflictDoNothing()
         .run();
     }
+    pruneAssetTags(ctx, asset.id);
 
     if (isPrimary) {
       db.update(mediaAsset)

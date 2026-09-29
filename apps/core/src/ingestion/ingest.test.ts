@@ -150,7 +150,8 @@ describe('ingestMessage', () => {
     );
 
     const tags = ctx.db.select().from(mediaTag).all();
-    expect(tags.map((t) => t.tag).sort()).toEqual(['Redgectx', '异环']);
+    // 标签归一化：ASCII 统一小写
+    expect(tags.map((t) => t.tag).sort()).toEqual(['redgectx', '异环']);
     expect(tags.every((t) => t.source === 'rule')).toBe(true);
 
     const doc = ctx.db.select().from(mediaSearchDoc).all();

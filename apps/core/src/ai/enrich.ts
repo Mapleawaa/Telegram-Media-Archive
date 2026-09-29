@@ -8,6 +8,13 @@ import {
   telegramMessage,
 } from '../database/schema.js';
 import { rebuildSearchDoc } from '../metadata/rebuild-search-doc.js';
+import { filterTags, pruneAssetTags } from '../metadata/tag-policy.js';
+import {
+  deriveTitleFromDescription,
+  isBadAiTitleLike,
+  isJunkTitle,
+  sanitizeAiTitle,
+} from '../metadata/title-policy.js';
 import type { ensureThumbnail as EnsureThumbnailFn } from '../telegram/bot/thumbnail.js';
 import type { TelegramClient } from '../telegram/client.js';
 import type { AiGateway } from './gateway.js';
@@ -378,10 +385,24 @@ function applyEnrichment(
     (v): v is string => Boolean(v),
   );
 
-  // 规则标题优先；只有在没有规则标题时才采用 AI 标题
-  if (textEnrichment?.title && !meta?.titleNorm) {
+  // 标题策略：规则标题优先，但规则标题是「垃圾标题」（通用词/纯数字/内部 ID）或缺失时，
+  // 允许 AI 标题补位；AI 未给标题时用视觉描述首句兜底（照片类常见）。
+  const aiTitle =
+    sanitizeAiTitle(textEnrichment?.title) ?? deriveTitleFromDescription(visionEnrichment?.description);
+  const ruleTitle = meta?.titleNorm ?? null;
+  if (aiTitle && (isJunkTitle(ruleTitle) || isJunkTitle(asset.canonicalTitle))) {
     db.update(mediaAsset)
-      .set({ canonicalTitle: textEnrichment.title, updatedAt: new Date() })
+      .set({ canonicalTitle: aiTitle, updatedAt: new Date() })
+      .where(eq(mediaAsset.id, assetId))
+      .run();
+  } else if (
+    !aiTitle &&
+    isJunkTitle(ruleTitle) &&
+    isBadAiTitleLike(asset.canonicalTitle)
+  ) {
+    // 历史坏标题（如拒答句）且本次没有更好的标题 → 清空，让 UI 用文件名/占位兜底
+    db.update(mediaAsset)
+      .set({ canonicalTitle: null, updatedAt: new Date() })
       .where(eq(mediaAsset.id, assetId))
       .run();
   }
@@ -405,9 +426,7 @@ function applyEnrichment(
     .run();
 
   const addTags = (list: string[] | undefined, source: 'llm' | 'vision') => {
-    for (const tag of list ?? []) {
-      const clean = tag.trim().slice(0, 64);
-      if (!clean) continue;
+    for (const clean of filterTags(list ?? [], new Set())) {
       db.insert(mediaTag)
         .values({ mediaAssetId: assetId, tag: clean, source })
         .onConflictDoNothing()
@@ -417,6 +436,8 @@ function applyEnrichment(
   addTags(textEnrichment?.tags, 'llm');
   addTags(visionEnrichment?.themes, 'vision');
   addTags(visionEnrichment?.mood, 'vision');
+  // 低价值过滤 / 多来源去重 / 上限截断（含来源群名）
+  pruneAssetTags(ctx, assetId);
 
   db.update(mediaAsset)
     .set({ aiStatus: status, updatedAt: new Date() })

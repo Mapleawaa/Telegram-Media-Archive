@@ -1,7 +1,10 @@
+import { eq } from 'drizzle-orm';
 import type { AppContext } from '../../context.js';
-import { mediaTag } from '../../database/schema.js';
+import { mediaAsset, mediaMetadata, mediaTag } from '../../database/schema.js';
 import { rebuildSearchDoc } from '../../metadata/rebuild-search-doc.js';
 import { extractHashtags } from '../../metadata/rule-parser.js';
+import { pruneAssetTags } from '../../metadata/tag-policy.js';
+import { cleanRuleTitle, isBadAiTitleLike, isJunkTitle } from '../../metadata/title-policy.js';
 import type { AppServer } from '../types.js';
 
 export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
@@ -17,6 +20,9 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       .all() as { assetId: number; caption: string; captionEntities: string | null }[];
 
     let tagsAdded = 0;
+    let tagsRemoved = 0;
+    let titlesCleared = 0;
+    let titlesCleaned = 0;
     const tx = ctx.sqlite.transaction(() => {
       for (const m of messages) {
         let entities: unknown;
@@ -35,11 +41,50 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
         }
       }
 
-      // 2) 搜索文档重建
+      // 2) 历史坏标题清理（模型拒答句被落库的情况）+ 标签治理 + 搜索文档重建
       const ids = (
         ctx.sqlite.prepare(`SELECT id FROM media_asset ORDER BY id`).all() as { id: number }[]
       ).map((r) => r.id);
-      for (const id of ids) rebuildSearchDoc(ctx, id);
+      const titleRows = ctx.sqlite
+        .prepare(
+          `SELECT a.id, a.canonical_title AS title, m.title_norm AS titleNorm
+           FROM media_asset a LEFT JOIN media_metadata m ON m.media_asset_id = a.id`,
+        )
+        .all() as { id: number; title: string | null; titleNorm: string | null }[];
+      for (const row of titleRows) {
+        // a) 规则标题推广尾巴清理（title_norm 与作为其副本的 canonical_title 同步）
+        if (row.titleNorm) {
+          const cleaned = cleanRuleTitle(row.titleNorm);
+          if (cleaned !== row.titleNorm) {
+            ctx.db
+              .update(mediaMetadata)
+              .set({ titleNorm: cleaned || null, updatedAt: new Date() })
+              .where(eq(mediaMetadata.mediaAssetId, row.id))
+              .run();
+            if (row.title === row.titleNorm) {
+              ctx.db
+                .update(mediaAsset)
+                .set({ canonicalTitle: cleaned || null, updatedAt: new Date() })
+                .where(eq(mediaAsset.id, row.id))
+                .run();
+            }
+            titlesCleaned += 1;
+          }
+        }
+        // b) 历史坏标题清理（模型拒答句被落库）
+        if (isBadAiTitleLike(row.title) && isJunkTitle(row.titleNorm)) {
+          ctx.db
+            .update(mediaAsset)
+            .set({ canonicalTitle: null, updatedAt: new Date() })
+            .where(eq(mediaAsset.id, row.id))
+            .run();
+          titlesCleared += 1;
+        }
+      }
+      for (const id of ids) {
+        tagsRemoved += pruneAssetTags(ctx, id);
+        rebuildSearchDoc(ctx, id);
+      }
     });
     tx();
 
@@ -47,7 +92,15 @@ export function registerAdminRoutes(app: AppServer, ctx: AppContext): void {
       ctx.sqlite.prepare(`SELECT COUNT(*) AS n FROM media_asset`).get() as { n: number }
     ).n;
 
-    return { ok: true, count, tagsAdded, tookMs: Date.now() - started };
+    return {
+      ok: true,
+      count,
+      tagsAdded,
+      tagsRemoved,
+      titlesCleared,
+      titlesCleaned,
+      tookMs: Date.now() - started,
+    };
   });
 
   app.post('/api/admin/reindex-embeddings', async (_req, reply) => {
