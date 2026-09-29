@@ -6,7 +6,7 @@ authors = ["Maple"]
 license = ""
 repository = ""
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.98"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,6 +16,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.7.0", features = [] }
+# 修复（host 侧）：schemars 0.8.22 是 tauri-build 的 build-dep，它开的 preserve_order 走
+# indexmap 1.9.3；resolver v3 下 host 侧 feature 单独统一，必须在这里也顶上 std，
+# 否则 indexmap 的 build.rs 走 autocfg 探测，探测失败就没有 has_std → schemars 编译失败
+indexmap_19 = { package = "indexmap", version = "1.9.3", features = ["std"] }
 
 [dependencies]
 serde_json = "1.0"
@@ -23,3 +27,8 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.0", features = [] }
 tauri-plugin-log = "2"
+# 修复：tauri-build 2.7 → schemars 0.8.22(preserve_order) → indexmap 1.9.3。
+# indexmap 1.9.3 没有 default feature，`std` 无人开启时其 build.rs 靠 autocfg 探测打
+# `has_std` 标记；探测失败会让 `IndexMap<K, V>` 丢掉默认泛型 S，schemars 直接编译失败。
+# 这里显式顶上 std feature（feature 统一会合并到同一份 indexmap 1.9.3 构建）。
+indexmap_19 = { package = "indexmap", version = "1.9.3", features = ["std"] }
