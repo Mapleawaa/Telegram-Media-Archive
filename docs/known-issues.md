@@ -28,7 +28,7 @@
 | B4b | P2 | 🟡 文件名/标题带推广尾巴（`电报TG@xxx`） | 规则标题 | ✅ 已修：`cleanRuleTitle`（剥句柄/短链）+ reindex 清理 4 条历史数据 |
 | B4c | P2 | 🟡 中文低价值标签没人管（`图片`/`照片`/`转发图片`/`未分类`/`待归档`/`横版`/`竖图`…） | `tag-policy.ts` 原过滤表只覆盖 ASCII | ✅ 已修（2026-09-29）：增 CJK 精确匹配表（类型/占位/方向词）+ reindex；真机 200 → 163 条，均值 6.52 |
 | B3b | P2 | 🟡 派生标题按 24 字硬切，出现「…白西装坐皮椅持杖，身后黑」半截标题 | `deriveTitleFromDescription` | ✅ 已修（2026-09-29）：改为按句中标点断句（上限 28 字）+ reindex 重生成 6 条历史标题 |
-| B5 | P2 | 🟡 相册（`media_group_id` 已记录）在网格中未相邻渲染、无相册标记 | `queries.ts` 未用该字段 | ✅ 已修（P3-3）：列表暴露 `mediaGroupId`/`albumCount`，卡片渲染相册角标 |
+| B5 | P2 | 🟡 相册（`media_group_id` 已记录）在网格中未相邻渲染、无相册标记 | `queries.ts` 未用该字段 | ✅ 已修（P3-3）：列表暴露 `mediaGroupId`/`albumCount`（**1 = 非相册**，子查询 NULL 场景已归一）+ 卡片角标 + `clusterByAlbum()` 稳定相邻聚簇（跨页不拼组） |
 | B6 | P2 | 🟡 无法修改主来源（星标只读）、无法删除媒体、无法手动改标题 | 详情页 | 加「设为主源」「删除（软删）」「编辑标题」三个动作 |
 | B7 | P2 | 🟡 搜索页无筛选器（Library 有，未复用） | `SearchPage.tsx` | 复用 Library 的筛选组件 |
 | B8 | P2 | 🟡 媒体库无排序切换（只有「最新」；搜索态是相关性） | `queries.ts` order 参数仅 recent/relevance | ✅ 已修（P3-4）：`sort=recent\|updated\|size\|duration\|year` + Library 页排序下拉 |

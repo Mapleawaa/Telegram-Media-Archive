@@ -148,7 +148,7 @@ await context.addInitScript(() => localStorage.setItem('tma.coreUrl', 'http://12
 |---|---|
 | sqlite-vec 主键 | `vec_media` 插入必须 `CAST(? AS INTEGER)`，普通参数绑定报错 |
 | FTS5 trigram | 查询词 ≥3 字符才走 FTS；短词应用层回落 LIKE |
-| 视觉模型（DeepSeek）是推理型 | 正文可能被推理占满；已有 reasoning_content 兜底 + 截断 JSON 修补 + 「无 `{` 视为拒答/说明文本」判定 |
+| **推理型模型（DeepSeek）会吃光 token** | 不只视觉模型——**chat 模型同样会**。标签压缩实测 `maxTokens=800` 时 9/25 次推理占满预算（`finishReason='length'`）、正文为空只剩 reasoning 兜底 → 没有 JSON。对策：给足 maxTokens（4096）+ prompt 明令「不要输出思考过程」+ **不可解析时抛错交给队列重试**（别静默 no-op）。视觉侧另有截断 JSON 修补 + 「无 `{` 视为拒答/说明文本」判定 |
 | pnpm 12 | 构建白名单在 `pnpm-workspace.yaml` 的 `allowBuilds`；`better-sqlite3` 必须 `false`（自带 prebuilds，node-gyp 缺 Python 会挂） |
 | Vite watch | 必须 `watch.ignored: ['**/src-tauri/**']`（否则 cargo 写 target 时 EBUSY 崩） |
 | TypeScript | 全仓钉 **5.9.3**，勿升 TS7 |

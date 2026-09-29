@@ -71,9 +71,10 @@ export async function consolidateTags(
         ],
         jsonMode: true,
         temperature: 0.1,
-        // DeepSeek 是推理型模型：800 token 时实测 9/25 次推理占满预算、正文没有 JSON
-        // （与视觉模型同一个坑）。给足余量，配合 prompt 里的「不要推理」。
-        maxTokens: 2_048,
+        // DeepSeek 是推理型模型，与视觉模型同一个坑：800 token 时实测 9/25 次推理占满预算
+        // （finishReason='length'）→ 正文为空、只剩 reasoning 兜底、没有 JSON；
+        // 2048 时仍有 7/25。提到 4096 并配合 prompt 的「不要推理」才稳。
+        maxTokens: 4_096,
       },
       { runId, label: 'tags.consolidate' },
     );
@@ -94,7 +95,11 @@ export async function consolidateTags(
     return parsed;
   });
 
-  if (!plan) return empty;
+  if (!plan) {
+    // 抛错而不是静默返回：让队列按既有退避策略重试（与 enrich 的 failed 处理一致）。
+    // 真机实测该情况全部是「推理占满 max_tokens、正文没有 JSON」，重试有较大概率成功。
+    throw new Error('标签压缩：模型未返回可解析 JSON（多为推理占满 token），将重试');
+  }
 
   const keep = new Set(asStringArray(plan.keep).map((t) => normalizeTag(t)).filter((t): t is string => Boolean(t)));
   const drop = new Set(asStringArray(plan.drop).map((t) => normalizeTag(t)).filter((t): t is string => Boolean(t)));

@@ -127,7 +127,39 @@ total: 12
   series 3 · anime 1 · gallery 2 · other 6
 ```
 
-### 2.3 浏览器实机核验（Chrome + playwright-core，连演示 core 8788）
+### 2.3 标签压缩：多轮实测与收敛（真实库，AI）
+
+第一轮批量压缩暴露出**静默失败**：25 条只有 16 条真正生效，其余 9 条「跑完等于没跑」且在库中**没有任何痕迹**。
+逐层定位与修复过程（全部基于真机数据）：
+
+| 轮次 | maxTokens | 结果 | 结论 |
+|---|---|---|---|
+| 1 | 800 | 16/25 生效，9 条无痕 | `finishReason='length'`，正文为空、只剩 `reasoning` 兜底 → 没 JSON |
+| 2 | 2048 + prompt 明令「不要推理」+ 记 `tags.consolidate.unusable` 决策步骤 | 21/25 | 仍有 `length/no-json` |
+| 3 | 4096 | 23/25 | 显著改善 |
+| 4 | 4096 + **不可解析时抛错交给队列重试**（与 `enrich` 一致） | **25/25，0 dead** | 收敛 |
+
+> 根因与视觉模型同一个坑：**DeepSeek 是推理型模型**，简单任务也可能先输出大段推理，
+> 把 `max_tokens` 吃光后正文为空。CLAUDE.md 的坑位表里早有记录，这次是命中 chat 模型。
+
+最终真实库状态（25 条）：
+
+```
+标签总数 200（P1 治理前 349） → 163（P1+P3 过滤） → 122（压缩后）
+每条均值 6.00 → 5.28 → 4.88 ；上限恒为 8
+分类：adult 12 · gallery 7 · other 5 · anime 1   （25/25 有分类）
+is_sensitive=1：12 条，与 adult 分类完全一致（不变量 0 违例）
+tags.consolidate 作业：100 个全部 succeeded，dead=0
+```
+
+```bash
+$ curl -s -X POST localhost:8787/api/admin/consolidate-tags
+{"ok":true,"total":25,"enqueued":25}
+$ # 约 25s 后（含失败重试）
+  作业 succeeded=100（四轮累计）· dead=0 · 有审计事件的资产 25/25
+```
+
+### 2.4 浏览器实机核验（Chrome + playwright-core，连演示 core 8788）
 
 脚本：`~/.workbuddy/binaries/node/workspace/verify-p3.mjs`（9/9 通过）
 
@@ -163,10 +195,11 @@ total: 12
 - [x] **P3-3 相册与排序**：列表暴露 `mediaGroupId`/`albumCount`（1 = 非相册）；shared 纯函数 `clusterByAlbum` 稳定聚簇，LibraryPage 消费；卡片相册角标；`sort=recent|updated|size|duration|year`（keyset 仅 recent）+ Library 页排序下拉。
 - [x] **P3-5 分类夹 API**：`GET /api/library/sections` → 六类预设恒定出现 + 自定义分类 + 未分类，各带计数与预览图（12 条）。
 - [x] **敏感标记**：`is_sensitive` 由人工分类（P2）与成人关键词/成人分类（P3）赋值，且与 `category='adult'` 保持一致。
-- [x] **单测**：127 例全绿（新增 category 17 + consolidate 5 + queries-p3 5 + album-cluster 5）。
+- [x] **单测**：**128 例全绿**（新增 category 18 + consolidate 6 + queries-p3 5 + album-cluster 5）。
 - [x] **smoke**：41/41（新增 11 项 P3 断言）。
 - [x] **UI 实机**：浏览器（Chrome）连演示 core 实际点过并截图（上表，9/9）。
-- [x] **真实库回填**：25/25 有分类（adult 10 / gallery 6 / other 9，不调模型）；`is_sensitive=1` 10 条，不变量复核 0 违例。
+- [x] **真实库回填**：25/25 有分类（终态 adult 12 / gallery 7 / other 5 / anime 1）；`is_sensitive=1` 12 条，不变量复核 0 违例。
+- [x] **标签压缩真机收敛**：25/25 覆盖、100 个作业 0 dead、均值降到 4.88（§2.3）。
 - [x] **文档**：本文件 + `known-issues.md` / `fix-plan.md` / `CLAUDE.md` 状态更新。
 
 ---
@@ -182,26 +215,35 @@ total: 12
 | 相册聚簇在前端 | 任务书写「按 group 排序 或 前端聚簇（择简）」→ 选**前端**：后端只暴露 `mediaGroupId/albumCount`，靠入库顺序天然相邻。 |
 | `tags.consolidate` 的 run kind | 先复用 `rerank`，随后**改为专属 `consolidate`**（`RUN_KINDS` 是纯 TS 常量、无 SQL 约束 → **不需要迁移**）。 |
 | mock 也支持标签压缩 | mock 对「标签归并」prompt 返回 `keep=全部/drop=[]/merge={}`，保证演示库不被误改，也让 P4 演示时可点。 |
+| 压缩失败改为「抛错重试」 | 任务书没规定。原本 `plan=null` 时静默返回空结果（=跑完等于没跑且无痕）；现改为：记 `tags.consolidate.unusable` 决策步骤 **+ 抛错交给队列按既有退避重试**，与 `enrich` 的失败处理保持一致。 |
 | `adult` 优先于类型规则 | 任务书把「成人标签→adult」列在规则里但未说明与 photo/season 的先后。定为**成人优先**（命中即进 adult），因为 U4 要求敏感内容单独归类。 |
 
 ### 已知问题（交给后续）
 
-1. **真实库 9 条 video 落 `other`**：这批内容在 P1/P2 时代已富化，那时的 prompt 不返回六类分类，且文件名无季集。
-   若要更准，需对它们**重新富化**（会花 token）或用「标签压缩」顺带修分类。**未擅自跑**（AI 成本纪律）。
+1. ~~**真实库 9 条 video 落 `other`**~~ → **已由标签压缩顺带修掉**：压缩作业会返回 `category`，
+   跑完 4 轮后 `other` 从 12 条降到 5 条（其余被模型判为 adult/anime），**没有走「重新富化」这条贵路径**。
 2. **`is_sensitive` 自动标了 10 条**（成人关键词标签 / `adult` 分类命中）。若用户认为过度，可调 `ADULT_KEYWORDS` 或改由人工确认——见 `known-issues.md` E1。
 3. **标签压缩的 `keep` 语义**：`keep` 仅表示「不删不并」，不作为白名单（模型没提到的标签也不会被删——删除只由 `drop` 驱动）。这样更保守，避免模型漏提导致误删。
 4. **相册聚簇只作用于「已加载的这一页」**：`clusterByAlbum` 在内存里对已取回的条目重排，**跨页的相册不会被拼回一起**（数据量大时要按 group 查询而非分页）。P4 影音墙如需整组展示，应按 `mediaGroupId` 单独查询。
 5. **相册未做独立分组框**：只有角标 + 相邻渲染（P4 会重做展示）。
 6. **`adult` 未接入隐私模式**：`is_sensitive` 数据已就绪，但「隐藏/遮罩」的行为在 P4-6 才实现。
+7. **标签压缩不是幂等的，且每轮都花 token**：每轮都可能继续微调（实测 4 轮后基本收敛，均值 4.88）。
+   批量入口是「全量入队」，**只在标签明显变脏时点**；单条成本约 400~1200 token（deepseek-flash），25 条约 ¥0.01 量级。
+8. **25 次压缩里仍有 0~4 次「推理占满 token」**：已靠 `maxTokens=4096` + 队列重试压到 25/25 覆盖；
+   若模型某天更啰嗦，重试 3 次仍失败会留 `dead` 作业（可见、可手动重试）+ `tags.consolidate.unusable` 步骤。
+9. **历史 run 的 kind 是 `rerank`**：改名前的 25 次压缩记在 `rerank` 下（保留审计原样，不重跑）。
 
 ### 备注：本阶段存在并行写入（已并入）
 
-本阶段工作期间，同一工作区**另有写入者**产出/改写了以下内容，均已并入 P3 提交（自洽、全绿）：
+本阶段工作期间，同一工作区**另有写入者**（上下文被压缩/重启后的同一接手工程师）产出/改写了以下内容，
+均已并入 P3 三轮提交（**自洽、全绿**）：
 - `packages/shared/src/album.ts`（`clusterByAlbum`/`albumSize`）、`apps/core/src/media/album-cluster.test.ts`、`apps/core/src/media/queries-p3.test.ts`
-- `LibraryPage.tsx` 的聚簇调用、`smoke.mts` 的部分 P3 断言
+- `LibraryPage.tsx` 的聚簇调用、`smoke.mts` 的部分 P3 断言（含新增的「非相册 albumCount=1」）
 - `category.ts` 的**成人优先**规则与 `adult ⇒ 敏感` 不变量修正（及其单测）、`RUN_KINDS` 新增 `consolidate`
+- `consolidate.ts` 的 `maxTokens` 4096 + 「不可解析即抛错重试」
 
-即：**本文件与提交 30a3804 是「两个写入者」的合并结果**。接手前请以工作区实际内容为准。
+提交序列：`30a3804`（P3 主体）→ `2cf11b3`（成人优先 + 敏感不变量 + 失败可追溯）→ `a15ea5c`（maxTokens）。
+**接手前请以工作区实际内容为准。**
 
 ### 下一入口
 

@@ -70,6 +70,12 @@ describe('buildConsolidatePrompt', () => {
     expect(p).toContain('不要推测媒体内容');
     expect(p).toContain('cos、cosplay');
   });
+
+  it('明确禁止把推理写进正文（真实缺陷：9/25 次推理占满 token，没吐 JSON）', () => {
+    const p = buildConsolidatePrompt(['cos']);
+    expect(p).toContain('不要输出任何思考过程');
+    expect(p).toContain('第一个字符必须是 {');
+  });
 });
 
 describe('consolidateTags', () => {
@@ -114,17 +120,18 @@ describe('consolidateTags', () => {
     });
   });
 
-  it('模型返回非 JSON → 不改动任何标签，但留下可追溯的 decision 步骤', () => {
+  it('模型返回非 JSON → 不改动标签、留 decision 痕迹、并抛错交给队列重试', async () => {
     const ctx = createTestContext();
     const id = seedAsset(ctx);
     const before = tagsOf(ctx, id);
-    const gateway = stubGateway('抱歉，我无法处理。');
-    return consolidateTags(ctx, gateway, id).then((res) => {
-      expect(tagsOf(ctx, id)).toEqual(before);
-      expect(res.dropped).toEqual([]);
-      // 关键：不能静默 no-op —— 真机曾有 9/25 条这样「跑完等于没跑」且无痕迹
-      expect(gateway.steps.map((s) => s.toolName)).toContain('tags.consolidate.unusable');
-    });
+    const gateway = stubGateway('我们需要处理这些标签，先分析一下…');
+
+    await expect(consolidateTags(ctx, gateway, id)).rejects.toThrow(/未返回可解析 JSON/);
+
+    // 关键 1：标签一个都不能动
+    expect(tagsOf(ctx, id)).toEqual(before);
+    // 关键 2：不能静默 no-op —— 真机曾有 9/25 条「跑完等于没跑」且无痕迹
+    expect(gateway.steps.map((s) => s.toolName)).toContain('tags.consolidate.unusable');
   });
 
   it('chat 未启用 → 直接返回空结果（不调模型）', () => {

@@ -5,13 +5,13 @@
 
 ## 当前进度（2026-09-29）
 
-一句话：**功能里程碑 M0/M1/M3/M4 完成；「地基整固」P1 ✅ → P2 ✅ → P3 待开工**——接手入口见 **`docs/handoff/NEXT-P2-P5-handoff.md`**，P2 收口见 `docs/handoff/P2-ai-routing.md`，计划与问题清单见 `docs/fix-plan.md` / `docs/known-issues.md`。C 类（MTProto/Agent/Trace/打包/批量/真实 embedding）按用户裁定暂缓。真机库 23 条媒体全部富化完成（P2 后**新发生**的转发会记录来源，历史条目的来源列为空）。
+一句话：**功能里程碑 M0/M1/M3/M4 完成；「地基整固」P1 ✅ → P2 ✅ → P3 ✅ → P4 待开工**——接手入口见 **`docs/handoff/NEXT-P2-P5-handoff.md`**，P2 收口见 `docs/handoff/P2-ai-routing.md`，P3 收口见 `docs/handoff/P3-categories-tags.md`，计划与问题清单见 `docs/fix-plan.md` / `docs/known-issues.md`。C 类（MTProto/Agent/Trace/打包/批量/真实 embedding）按用户裁定暂缓。真机库 25 条媒体全部富化完成并已全量回填分类与压缩标签（P2 后**新发生**的转发会记录来源，历史条目的来源列为空）。
 
 | 阶段 | 状态 | 内容 |
 |---|---|---|
 | P1 | ✅ | 地基快修：去重键 / 标题策略 / 标签治理（349→170）/ 坏标题清理 |
 | P2 | ✅ | **AI 介入分流器**：来源多类型黑名单 + 命中不进模型 + 人工分类队列 + 单条开关（`docs/handoff/P2-ai-routing.md`；真机转发验收待办） |
-| P3 | ⬜ | 分类体系（电影/剧集/动漫/成人/图集/其他）+ AI 标签压缩 |
+| P3 | ✅ | **分类体系 + 标签智能**：六类 + 自定义（规则/AI/人工三级，成人优先单独归类）+ `GET /api/library/sections` + `tags.consolidate`（AI 只看标签）+ 相册聚簇/排序（`docs/handoff/P3-categories-tags.md`）。真机：25/25 有分类，标签总数 200→122、均值 4.88 |
 | P4 | ⬜ | Desktop UI 重设计（深色影音墙，Jellyfin/Emby/Apple TV 式；必须用户实机审阅） |
 | P5 | ⬜ | 细节与运维收口（主源/删除/改标题、缓存清理、日志落盘、lint、ErrorBoundary） |
 
@@ -21,6 +21,7 @@
 | 中文搜索（FTS trigram + LIKE 兜底 + 结构化过滤） | ✅ | |
 | AI 富化（标题/摘要/标签 + 缩略图视觉理解 + 运行轨迹 + Inbox） | ✅ | M3，DeepSeek |
 | 语义检索（sqlite-vec + 向量缓存 + RRF Hybrid 融合） | 🟡 | 管线就绪，**待接真实 embedding** |
+| 分类体系 + 标签智能（六类分类夹 / AI 只看标签压缩 / 相册聚簇 / 排序） | ✅ | P3；隐私模式（P4-6）可直接消费 `isSensitive` |
 | MTProto 历史扫描/copy 无转发头 | ⬜ | M2 |
 | Agent（自然语言→工具调用）、Trace 可视化、打包 | ⬜ | M5 / M6 / M7 |
 
