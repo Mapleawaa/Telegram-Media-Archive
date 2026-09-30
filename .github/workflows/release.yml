@@ -1,0 +1,43 @@
+name: Release（Tauri 桌面打包）
+
+# 推 v* 标签时打包 Windows 桌面端（exe + MSI），并创建 GitHub Release 草稿
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-tauri:
+    name: Tauri build (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # 打包前端 + Rust 并产出 bundle（bundle.targets 当前为 msi）
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Telegram Media Archive ${{ github.ref_name }}'
+          releaseBody: 'Windows 桌面端：MSI 安装包（另附裸 exe 见 Release 资产）。'
+          releaseDraft: true
+          prerelease: false
