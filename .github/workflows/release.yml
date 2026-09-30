@@ -32,10 +32,13 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       # 打包前端 + Rust 并产出 bundle（bundle.targets 当前为 msi）
+      # projectPath 必须指到 desktop 包：tauri CLI 从 cwd 解析 beforeBuildCommand，
+      # 不指的话会在仓库根执行 `pnpm run build:web`（根 package.json 没这个脚本）而炸
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'Telegram Media Archive ${{ github.ref_name }}'
           releaseBody: 'Windows 桌面端：MSI 安装包（另附裸 exe 见 Release 资产）。'
